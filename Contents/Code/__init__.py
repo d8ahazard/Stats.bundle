@@ -320,11 +320,12 @@ def Restart():
 
 def QueryDB(selection):
     queries = {
-        "all": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1 GROUP BY tags.tag,tags.tag_type ORDER BY Total desc;",
+        "all": "SELECT tags.tag, tags.tag_type, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1 GROUP BY tags.tag,tags.tag_type ORDER BY Total desc;",
         "actor": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 GROUP BY tags.tag ORDER BY Total desc;",
         "director": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 4 GROUP BY tags.tag ORDER BY Total desc;",
         "writer": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 5 GROUP BY tags.tag ORDER BY Total desc;",
-        "genre": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 1 GROUP BY tags.tag ORDER BY Total desc;"
+        "genre": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 1 GROUP BY tags.tag ORDER BY Total desc;",
+        "view_count": "SELECT "
     }
     if selection not in queries:
         return False
@@ -344,9 +345,19 @@ def QueryDB(selection):
         results = []
         if selection == "all":
             for title, tag_type, tag_count in cursor.execute(query):
+                tag_title = 'unknown'
+                if tag_type == 6:
+                    tag_title = "actor"
+                if tag_type == 4:
+                    tag_title = "director"
+                if tag_type == 5:
+                    tag_title = "writer"
+                if tag_type == 1:
+                    tag_title = "genre"
+
                 dicts = {
                     "title": title,
-                    "tag_type": tag_type,
+                    "type": tag_title,
                     "count": tag_count
                 }
                 results.append(dicts)

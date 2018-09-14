@@ -104,6 +104,7 @@ class StatContainer(CustomContainer):
         self.name = "Tag"
         allowed_attributes = [
             "tag",
+            "type",
             "tag_type",
             "tag_count",
             "title",
