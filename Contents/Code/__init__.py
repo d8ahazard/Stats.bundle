@@ -125,14 +125,20 @@ def ValidatePrefs():
 @route(APP + '/all')
 @route(PREFIX2 + '/stats/all')
 def All():
-    """
-
-    Endpoint to scan LAN for cast devices
-    """
     mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    if "Limit" in headers:
+        limit = headers["Limit"]
+    else:
+        limit = 100
+
+    if "Type" in headers:
+        media_type = headers["Type"]
+    else:
+        media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("all")
+    records = QueryDB("all", limit, media_type)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -143,14 +149,20 @@ def All():
 @route(APP + '/actor')
 @route(PREFIX2 + '/stats/actor')
 def All():
-    """
-
-    Endpoint to scan LAN for cast devices
-    """
     mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    if "Limit" in headers:
+        limit = headers["Limit"]
+    else:
+        limit = 100
+
+    if "Type" in headers:
+        media_type = headers["Type"]
+    else:
+        media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("actor")
+    records = QueryDB("actor", limit, type)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -161,14 +173,20 @@ def All():
 @route(APP + '/director')
 @route(PREFIX2 + '/stats/director')
 def All():
-    """
-
-    Endpoint to scan LAN for cast devices
-    """
     mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    if "Limit" in headers:
+        limit = headers["Limit"]
+    else:
+        limit = 100
+
+    if "Type" in headers:
+        media_type = headers["Type"]
+    else:
+        media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("director")
+    records = QueryDB("director", limit, media_type)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -179,14 +197,20 @@ def All():
 @route(APP + '/writer')
 @route(PREFIX2 + '/stats/writer')
 def All():
-    """
-
-    Endpoint to scan LAN for cast devices
-    """
     mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    if "Limit" in headers:
+        limit = headers["Limit"]
+    else:
+        limit = 100
+
+    if "Type" in headers:
+        media_type = headers["Type"]
+    else:
+        media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("writer")
+    records = QueryDB("writer", limit, media_type)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -197,14 +221,20 @@ def All():
 @route(APP + '/genre')
 @route(PREFIX2 + '/stats/genre')
 def All():
-    """
-
-    Endpoint to scan LAN for cast devices
-    """
     mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    if "Limit" in headers:
+        limit = headers["Limit"]
+    else:
+        limit = 100
+
+    if "Type" in headers:
+        media_type = headers["Type"]
+    else:
+        media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("genre")
+    records = QueryDB("genre", limit, media_type)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -318,19 +348,47 @@ def Restart():
     Plex[":/plugins"].restart(PLUGIN_IDENTIFIER)
 
 
-def QueryDB(selection):
+def sort_headers(header_list, strict=False):
+    returns = {}
+    for key, value in Request.Headers.items():
+        Log.Debug("Header key %s is %s", key, value)
+        for item in header_list:
+            if key in ("X-Plex-" + item, item):
+                Log.Debug("We have a " + item)
+                returns[item] = unicode(value)
+                header_list.remove(item)
+
+    if strict:
+        len2 = len(header_list)
+        if len2 == 0:
+            Log.Debug("We have all of our values: " + JSON.StringFromObject(returns))
+            return returns
+
+        else:
+            Log.Error("Sorry, parameters are missing.")
+            for item in header_list:
+                Log.Error("Missing " + item)
+            return False
+    else:
+        return returns
+
+
+def QueryDB(selection, limit=100, media_type=None):
+    Log.Debug("Limit is set to %s" % limit)
     queries = {
-        "all": "SELECT tags.tag, tags.tag_type, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1 GROUP BY tags.tag,tags.tag_type ORDER BY Total desc;",
-        "actor": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 GROUP BY tags.tag ORDER BY Total desc;",
-        "director": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 4 GROUP BY tags.tag ORDER BY Total desc;",
-        "writer": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 5 GROUP BY tags.tag ORDER BY Total desc;",
-        "genre": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 1 GROUP BY tags.tag ORDER BY Total desc;",
+        "all": "SELECT tags.tag, tags.tag_type, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1 GROUP BY tags.tag,tags.tag_type ORDER BY Total desc",
+        "actor": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 GROUP BY tags.tag ORDER BY Total desc",
+        "director": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 4 GROUP BY tags.tag ORDER BY Total desc",
+        "writer": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 5 GROUP BY tags.tag ORDER BY Total desc",
+        "genre": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 1 GROUP BY tags.tag ORDER BY Total desc",
         "view_count": "SELECT "
     }
     if selection not in queries:
         return False
     else:
         query = queries[selection]
+
+    query = query + " LIMIT %s;" % limit
 
     try:
         import apsw
