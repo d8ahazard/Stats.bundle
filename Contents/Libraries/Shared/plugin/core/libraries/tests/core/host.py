@@ -9,7 +9,7 @@ import traceback
 
 log = logging.getLogger(__name__)
 
-PLUGIN_IDENTIFIER = 'trakttv.bundle'
+PLUGIN_IDENTIFIER = 'Stats.bundle'
 
 
 def get_bundle_path():

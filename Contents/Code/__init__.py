@@ -12,15 +12,16 @@ import StringIO
 import glob
 from plugin.core.environment import Environment, translate as _
 import os
+import log_helper
 
 Environment.setup(Core, Dict, Platform, Prefs)
+
 from zipfile import ZipFile, ZIP_DEFLATED
 from plex_database.core import db
 import sys
 
 from subzero.lib.io import FileIO
 
-import log_helper
 from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
     ViewContainer, AnyContainer
 from lib import Plex
@@ -35,6 +36,7 @@ else:
     pmsPath = os.path.join(os.environ["HOME"], "Library", "Application Support", "Plex Media Server")
 
 dbPath = os.path.join(pmsPath, "Plug-in Support", "Databases", "com.plexapp.plugins.library.db")
+Log.Debug("Setting DB path to '%s'" % dbPath)
 os.environ['LIBRARY_DB'] = dbPath
 
 # ------------------------------------------------
@@ -81,7 +83,7 @@ def MainMenu():
     Main menu
     and stuff
     """
-    Log.Debug("**********  Starting MainMenus  **********")
+    Log.Debug("**********  Starting MainMenus  ***********")
     title = NAME + " - " + VERSION
     if Data.Exists('last_scan'):
         title = NAME + " - " + Data.Load('last_scan')
@@ -135,9 +137,10 @@ def All():
 
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("all", limit)
-    for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
+    if records is not None:
+        for record in records:
+            sc = StatContainer(record)
+            mc.add(sc)
 
     return mc
 
@@ -154,9 +157,10 @@ def Actor():
 
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("actor", limit)
-    for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
+    if records is not None:
+        for record in records:
+            sc = StatContainer(record)
+            mc.add(sc)
 
     return mc
 
@@ -173,9 +177,10 @@ def Director():
 
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("director", limit)
-    for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
+    if records is not None:
+        for record in records:
+            sc = StatContainer(record)
+            mc.add(sc)
 
     return mc
 
@@ -192,6 +197,21 @@ def Writer():
 
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("writer", limit)
+    if records is not None:
+        for record in records:
+            sc = StatContainer(record)
+            mc.add(sc)
+
+    return mc
+
+
+@route(APP + '/library')
+@route(PREFIX2 + '/stats/library')
+def Library():
+    mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    Log.Debug("Here's where we fetch some library stats.")
+    records = query_library_stats(headers)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -206,46 +226,46 @@ def User():
     headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title"])
 
     records = query_media_stats(headers)
+    if records is not None:
+        users1 = {}
+        users2 = {}
+        for record in records[0]:
+            user_name = record["userName"]
+            if user_name not in users1:
+                users1[user_name] = []
+            temp_dict = users1[user_name]
+            Log.Debug("Appending record '%s'" % JSON.StringFromObject(record))
+            del(record["userName"])
+            temp_dict.append(dict(record))
+            users1[user_name] = temp_dict
 
-    users1 = {}
-    users2 = {}
-    for record in records[0]:
-        user_name = record["userName"]
-        if user_name not in users1:
-            users1[user_name] = []
-        temp_dict = users1[user_name]
-        Log.Debug("Appending record '%s'" % JSON.StringFromObject(record))
-        del(record["userName"])
-        temp_dict.append(dict(record))
-        users1[user_name] = temp_dict
+        for record in records[1]:
+            user_name = record["userName"]
+            if user_name not in users2:
+                users2[user_name] = []
+            temp_dict = users2[user_name]
+            del(record["userName"])
+            temp_dict.append(dict(record))
+            users2[user_name] = temp_dict
 
-    for record in records[1]:
-        user_name = record["userName"]
-        if user_name not in users2:
-            users2[user_name] = []
-        temp_dict = users2[user_name]
-        del(record["userName"])
-        temp_dict.append(dict(record))
-        users2[user_name] = temp_dict
-
-    for name in users1:
-        id = users1[name][0]["user_id"]
-        uc = UserContainer({"name": name, "id": id})
-        ac = AnyContainer(None, "Media")
-        Log.Debug("Creating container1 for %s" % name)
-        for record in users1[name]:
-            del(record["user_id"])
-            Log.Debug("Adding record")
-            vc = ViewContainer(record)
-            ac.add(vc)
-        uc.add(ac)
-        ac = AnyContainer(None, "Stats")
-        for record in users2[name]:
-            del(record["user_id"])
-            vc = ViewContainer(record)
-            ac.add(vc)
-        uc.add(ac)
-        mc.add(uc)
+        for name in users1:
+            id = users1[name][0]["user_id"]
+            uc = UserContainer({"name": name, "id": id})
+            ac = AnyContainer(None, "Media")
+            Log.Debug("Creating container1 for %s" % name)
+            for record in users1[name]:
+                del(record["user_id"])
+                Log.Debug("Adding record")
+                vc = ViewContainer(record)
+                ac.add(vc)
+            uc.add(ac)
+            ac = AnyContainer(None, "Stats")
+            for record in users2[name]:
+                del(record["user_id"])
+                vc = ViewContainer(record)
+                ac.add(vc)
+            uc.add(ac)
+            mc.add(uc)
 
     Log.Debug("Still alive")
 
@@ -483,7 +503,7 @@ def query_tag_stats(selection, limit=100):
         return results
     else:
         Log.Debug("No DB HERE, FUCKER.")
-        return False
+        return None
 
 
 def query_media_stats(headers):
@@ -626,4 +646,91 @@ def query_media_stats(headers):
         return [results, results2]
     else:
         Log.Debug("No DB HERE, FUCKER.")
-        return False
+        return None
+
+
+def query_library_stats(headers):
+    if "Limit" in headers:
+        limit = headers["Limit"]
+        del headers["Limit"]
+    else:
+        limit = None
+
+    meta_types = {
+        "movie": 1,
+        "show": 2,
+        "episode": 4,
+        "album": 9,
+        "track": 10
+    }
+
+    if "Type" in headers:
+        if headers["Type"] in meta_types:
+            headers['Type'] = meta_types[headers['Type']]
+
+    Log.Debug("Limit is set to %s" % limit)
+
+    try:
+        import apsw
+    except ImportError as ex:
+        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
+        apsw = None
+
+    if apsw is not None:
+        Log.Debug("Shit, we got the librarys!")
+        connection = apsw.Connection(os.environ['LIBRARY_DB'])
+        cursor = connection.cursor()
+
+        if limit is not None:
+            limit = "LIMIT %s" % limit
+        else:
+            limit = ""
+
+        lines = []
+        query_selector = ""
+        if len(headers.keys()) != 0:
+            Log.Debug("We have headers...")
+            selectors = {
+                "Userid": "acc.id",
+                "Username": "acc.name",
+                "Type": "mi.metadata_type",
+                "Title": "mi.title"
+            }
+
+            for header_key, value in headers.items():
+                if header_key in selectors:
+                    Log.Debug("Header key %s is present" % header_key)
+                    header_key = selectors[header_key]
+                    lines.append("%s = '%s'" % (header_key, value))
+
+        if bool(lines):
+            Log.Debug("We have lines too...")
+            query_selector = "WHERE " + "AND".join(lines)
+
+        query = """SELECT mi.id AS media_id, 
+                    metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
+                    mi.metadata_type, mi.user_thumb_url, mi.user_art_url,
+                    acc.id, acc.name from metadata_item_views
+                    INNER JOIN metadata_items AS mi 
+                       ON metadata_item_views.title = mi.title
+                    INNER JOIN accounts as acc
+                       ON acc.id = metadata_item_views.account_id
+                %s
+                ORDER BY metadata_item_views.viewed_at desc
+                %s;""" % (query_selector, limit)
+
+        Log.Debug("Querys is '%s'" % query)
+        results = []
+        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(query):
+            dictz = {
+                "user_id": user_id,
+                "userName": user_name,
+                "ratingKey": rating_key,
+                "title": title,
+                "grandparentTitle": grandparent_title,
+                "lastViewed": viewed_at,
+                "type": meta_type,
+                "thumb": thumb,
+                "art": art
+            }
+            results.append(dictz)

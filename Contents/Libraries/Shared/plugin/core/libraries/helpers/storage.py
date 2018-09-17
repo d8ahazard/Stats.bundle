@@ -11,7 +11,7 @@ class StorageHelper(object):
     base_names = [
         'plug-ins',
         'plug-in support',
-        'trakttv.bundle'
+        'Stats.bundle'
     ]
 
     framework_patterns = re.compile_list([

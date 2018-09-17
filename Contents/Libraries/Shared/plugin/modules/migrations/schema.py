@@ -56,7 +56,7 @@ class SchemaMigration(Migration):
         MessageManager.get.from_message(logging.WARNING,
             message="Plugin database has been reset due to schema corruption",
             description="Your corrupted database is available at: "
-                        "\"Plug-in Support\\Data\\com.plexapp.plugins.trakttv\\Backups\\main.bgr\"",
+                        "\"Plug-in Support\\Data\\com.plexapp.plugins.Stats\\Backups\\main.bgr\"",
             code=Message.Code.DatabaseSchemaCorruptionReset
         )
 

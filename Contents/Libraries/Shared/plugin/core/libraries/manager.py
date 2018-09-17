@@ -14,6 +14,8 @@ import platform
 import sys
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+log.addHandler(logging.NullHandler())
 
 
 class LibrariesManager(object):
@@ -65,7 +67,7 @@ class LibrariesManager(object):
         for path in sys.path:
             path_lower = path.lower()
 
-            if 'trakttv.bundle' not in path_lower and 'com.plexapp.plugins.trakttv' not in path_lower:
+            if 'Stats.bundle' not in path_lower and 'com.plexapp.plugins.Stats' not in path_lower:
                 continue
 
             search_paths.append(path)

@@ -17,7 +17,7 @@ LOG_OPTIONS = {
     'peewee':                       'peewee',
     'peewee_migrate':               'peewee',
 
-    'com.plexapp.plugins.trakttv':  'plugin',
+    'com.plexapp.plugins.Stats':  'plugin',
     'plugin':                       'plugin',
 
     'pyemitter':                    'pyemitter'
@@ -78,8 +78,8 @@ class LoggerManager(object):
             LOG_HANDLER
         ]
 
-        # Initialize "com.plexapp.plugins.trakttv" logger
-        pluginLogger = logging.getLogger('com.plexapp.plugins.trakttv')
+        # Initialize "com.plexapp.plugins.Stats" logger
+        pluginLogger = logging.getLogger('com.plexapp.plugins.Stats')
         pluginLogger.setLevel(logging.DEBUG)
 
         pluginLogger.filters = [

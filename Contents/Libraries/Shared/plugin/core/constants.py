@@ -2,11 +2,11 @@ from plugin.core.enums import ActivityMode
 from plugin.core.helpers.variable import pms_path
 from plugin.core.helpers.version import build_version
 
-PLUGIN_NAME = 'Trakt.tv'
+PLUGIN_NAME = 'PMSStats'
 PLUGIN_ART = 'art-default.png'
 PLUGIN_ICON = 'icon-default.png'
-PLUGIN_IDENTIFIER = 'com.plexapp.plugins.trakttv'
-PLUGIN_PREFIX = '/video/trakt'
+PLUGIN_IDENTIFIER = 'com.plexapp.plugins.Stats'
+PLUGIN_PREFIX = '/stats'
 
 PLUGIN_VERSION_BASE = (1, 3, 3)
 PLUGIN_VERSION_BRANCH = 'master'

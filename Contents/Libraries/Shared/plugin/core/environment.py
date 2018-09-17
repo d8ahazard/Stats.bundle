@@ -197,6 +197,7 @@ class Environment(object):
         if language:
             return language.lower()
 
+        log.debug("Platform version is %s" % platform.system())
         # Use system language
         if platform.system() == 'Windows':
             # Retrieve windows user language

@@ -50,7 +50,7 @@ class FrameworkFilter(Filter):
         if record.levelno < logging.ERROR:
             return False
 
-        if record.name not in ['root', 'com.plexapp.plugins.trakttv']:
+        if record.name not in ['root', 'com.plexapp.plugins.Stats']:
             return False
 
         if not record.pathname:
