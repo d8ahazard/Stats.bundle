@@ -133,11 +133,6 @@ def All():
     else:
         limit = 100
 
-    if "Type" in headers:
-        media_type = headers["Type"]
-    else:
-        media_type = None
-
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("all", limit)
     for record in records:
@@ -156,11 +151,6 @@ def Actor():
         limit = headers["Limit"]
     else:
         limit = 100
-
-    if "Type" in headers:
-        media_type = headers["Type"]
-    else:
-        media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("actor", limit)
@@ -181,11 +171,6 @@ def Director():
     else:
         limit = 100
 
-    if "Type" in headers:
-        media_type = headers["Type"]
-    else:
-        media_type = None
-
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("director", limit)
     for record in records:
@@ -205,11 +190,6 @@ def Writer():
     else:
         limit = 100
 
-    if "Type" in headers:
-        media_type = headers["Type"]
-    else:
-        media_type = None
-
     Log.Debug("Here's where we fetch some stats.")
     records = query_tag_stats("writer", limit)
     for record in records:
@@ -223,7 +203,7 @@ def Writer():
 @route(PREFIX2 + '/stats/user')
 def User():
     mc = MediaContainer()
-    headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title", "Duration", "Count"])
+    headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title"])
 
     records = query_media_stats(headers)
 
