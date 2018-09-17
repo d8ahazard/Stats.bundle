@@ -110,6 +110,32 @@ class StatContainer(CustomContainer):
         CustomContainer.__init__(self, allowed_attributes, allowed_children)
 
 
+class UserContainer(CustomContainer):
+    def __init__(self, dict=None):
+        self.show_size = True
+        self.dict = dict
+        self.name = "Stats"
+        allowed_attributes = None
+        allowed_children = [
+            "View"
+        ]
+
+        CustomContainer.__init__(self, allowed_attributes, allowed_children)
+
+
+class ViewContainer(CustomContainer):
+    def __init__(self, dict=None):
+        self.show_size = False
+        self.dict = dict
+        self.name = "View"
+        allowed_attributes = None
+        allowed_children = [
+            "Connection"
+        ]
+
+        CustomContainer.__init__(self, allowed_attributes, allowed_children)
+
+
 class CastContainer(CustomContainer):
     def __init__(self, dict=None):
         self.show_size = False

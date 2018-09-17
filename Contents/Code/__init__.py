@@ -21,7 +21,8 @@ import sys
 from subzero.lib.io import FileIO
 
 import log_helper
-from CustomContainer import MediaContainer, ZipObject, StatusContainer, MetaContainer, StatContainer
+from CustomContainer import MediaContainer, ZipObject, StatusContainer, MetaContainer, StatContainer, UserContainer, \
+    ViewContainer
 from lib import Plex
 
 if sys.platform == "win32":
@@ -225,10 +226,16 @@ def User():
     headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title", "Duration", "Count"])
 
     records = query_media_stats(headers)
-    for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
-
+    uc = UserContainer({"Type": "Media"})
+    for record in records[0]:
+        sc = ViewContainer(record)
+        uc.add(sc)
+    mc.add(uc)
+    uc = UserContainer({"Type": "General"})
+    for record in records[1]:
+        sc = ViewContainer(record)
+        uc.add(sc)
+    mc.add(uc)
     return mc
 
 
@@ -540,7 +547,7 @@ def query_media_stats(headers):
         Log.Debug("Querys is '%s'" % query)
         results = []
         for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(query):
-            dict = {
+            dictz = {
                 "user_id": user_id,
                 "userName": user_name,
                 "ratingKey": rating_key,
@@ -551,8 +558,59 @@ def query_media_stats(headers):
                 "thumb": thumb,
                 "art": art
             }
-            results.append(dict)
-        return results
+            results.append(dictz)
+
+        lines = []
+        results2 = []
+        query_selector = ""
+        if len(headers.keys()) != 0:
+            Log.Debug("We have headers...")
+            selectors = {
+                "Userid": "sm.account_id",
+                "Username": "accounts.name",
+                "Type": "sm.metadata_type"
+            }
+
+            for header_key, value in headers.items():
+                if header_key in selectors:
+                    Log.Debug("Header key %s is present" % header_key)
+                    header_key = selectors[header_key]
+                    lines.append("%s = '%s'" % (header_key, value))
+
+        if bool(lines):
+            Log.Debug("We have lines too...")
+            query_selector = "WHERE " + "AND".join(lines)
+
+        query2 = """select sm.account_id, sm.timespan, sm.at, sm.metadata_type, sm.count, sm.duration,
+                         accounts.name,
+                         devices.name AS device_name, devices.identifier AS device_id,
+                         sb.bytes from statistics_media AS sm
+                         INNER JOIN statistics_bandwidth as sb
+                             ON sb.at = sm.at AND sb.account_id = sm.account_id AND sb.device_id = sm.device_id
+                         INNER JOIN accounts
+                             ON accounts.id = sm.account_id
+                         INNER JOIN devices
+                             ON devices.id = sm.device_id
+                             %s
+                         ORDER BY sm.at DESC 
+                         %s;""" % (query_selector, limit)
+
+        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(query2):
+            dictz = {
+                "user_id": user_id,
+                "userName": user_name,
+                "timespan": timespan,
+                "viewedAt": viewed_at,
+                "metaType": meta_type,
+                "count": count,
+                "duration": duration,
+                "deviceName": device_name,
+                "deviceId": device_id,
+                "bytes": bytes
+            }
+            results2.append(dictz)
+
+        return [results, results2]
     else:
         Log.Debug("No DB HERE, FUCKER.")
         return False
