@@ -115,7 +115,7 @@ class StatContainer(CustomContainer):
 
 class UserContainer(CustomContainer):
     def __init__(self, dict=None):
-        self.show_size = True
+        self.show_size = False
         self.dict = dict
         self.name = "User"
         allowed_attributes = None
@@ -138,8 +138,8 @@ class ViewContainer(CustomContainer):
 
 
 class AnyContainer(CustomContainer):
-    def __init__(self, dict=None, name="Any"):
-        self.show_size = False
+    def __init__(self, dict=None, name="Any", show_size=True):
+        self.show_size = show_size
         self.dict = dict
         self.name = name
         allowed_attributes = None
