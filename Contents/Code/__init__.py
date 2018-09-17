@@ -21,8 +21,8 @@ import sys
 from subzero.lib.io import FileIO
 
 import log_helper
-from CustomContainer import MediaContainer, ZipObject, StatusContainer, MetaContainer, StatContainer, UserContainer, \
-    ViewContainer
+from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
+    ViewContainer, AnyContainer
 from lib import Plex
 
 if sys.platform == "win32":
@@ -226,16 +226,44 @@ def User():
     headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title", "Duration", "Count"])
 
     records = query_media_stats(headers)
-    uc = UserContainer({"Type": "Media"})
+
+    users1 = {}
+    users2 = {}
     for record in records[0]:
-        sc = ViewContainer(record)
-        uc.add(sc)
-    mc.add(uc)
-    uc = UserContainer({"Type": "General"})
+        user_name = record["userName"]
+        if user_name not in users1:
+            users1[user_name] = []
+        temp_dict = users1[user_name]
+        Log.Debug("Appending record '%s'" % JSON.StringFromObject(record))
+        temp_dict.append(dict(record))
+        users1[user_name] = temp_dict
+
     for record in records[1]:
-        sc = ViewContainer(record)
-        uc.add(sc)
-    mc.add(uc)
+        user_name = record["userName"]
+        if user_name not in users2:
+            users2[user_name] = []
+        temp_dict = users2[user_name]
+        temp_dict.append(dict(record))
+        users2[user_name] = temp_dict
+
+    for name in users1:
+        uc = UserContainer({"Name": name})
+        ac = AnyContainer(None, "Media")
+        Log.Debug("Creating container1 for %s" % name)
+        for record in users1[name]:
+            Log.Debug("Adding record")
+            vc = ViewContainer(record)
+            ac.add(vc)
+        uc.add(ac)
+        ac = AnyContainer(None, "Stats")
+        for record in users2[name]:
+            vc = ViewContainer(record)
+            ac.add(vc)
+        uc.add(ac)
+        mc.add(uc)
+
+    Log.Debug("Still alive")
+
     return mc
 
 
