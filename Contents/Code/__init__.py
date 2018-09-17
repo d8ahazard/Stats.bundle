@@ -138,7 +138,7 @@ def All():
         media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("all", limit, media_type)
+    records = query_tag_stats("all", limit)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -148,7 +148,7 @@ def All():
 
 @route(APP + '/actor')
 @route(PREFIX2 + '/stats/actor')
-def All():
+def Actor():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
     if "Limit" in headers:
@@ -162,7 +162,7 @@ def All():
         media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("actor", limit, type)
+    records = query_tag_stats("actor", limit)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -172,7 +172,7 @@ def All():
 
 @route(APP + '/director')
 @route(PREFIX2 + '/stats/director')
-def All():
+def Director():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
     if "Limit" in headers:
@@ -186,7 +186,7 @@ def All():
         media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("director", limit, media_type)
+    records = query_tag_stats("director", limit)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -196,7 +196,7 @@ def All():
 
 @route(APP + '/writer')
 @route(PREFIX2 + '/stats/writer')
-def All():
+def Writer():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
     if "Limit" in headers:
@@ -210,7 +210,21 @@ def All():
         media_type = None
 
     Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("writer", limit, media_type)
+    records = query_tag_stats("writer", limit)
+    for record in records:
+        sc = StatContainer(record)
+        mc.add(sc)
+
+    return mc
+
+
+@route(APP + '/user')
+@route(PREFIX2 + '/stats/user')
+def User():
+    mc = MediaContainer()
+    headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title", "Duration", "Count"])
+
+    records = query_media_stats(headers)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -220,7 +234,7 @@ def All():
 
 @route(APP + '/genre')
 @route(PREFIX2 + '/stats/genre')
-def All():
+def Genre():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
     if "Limit" in headers:
@@ -228,13 +242,8 @@ def All():
     else:
         limit = 100
 
-    if "Type" in headers:
-        media_type = headers["Type"]
-    else:
-        media_type = None
-
-    Log.Debug("Here's where we fetch some stats.")
-    records = QueryDB("genre", limit, media_type)
+    Log.Debug("Here's where we fetch some statsssss.")
+    records = query_tag_stats("genre", limit)
     for record in records:
         sc = StatContainer(record)
         mc.add(sc)
@@ -319,27 +328,6 @@ def TriggerRestart():
         title_bar="Chromecast",
         view_group="Details")
 
-    do = DirectoryObject(
-        title="Rescan Devices",
-        thumb=R(ICON_CAST_REFRESH),
-        key=Callback(Rescan))
-
-    oc.add(do)
-
-    do = DirectoryObject(
-        title="Devices",
-        thumb=R(ICON_CAST),
-        key=Callback(Resources))
-
-    oc.add(do)
-
-    do = DirectoryObject(
-        title="Broadcast",
-        thumb=R(ICON_CAST_AUDIO),
-        key=Callback(Broadcast))
-
-    oc.add(do)
-
     return oc
 
 
@@ -373,22 +361,8 @@ def sort_headers(header_list, strict=False):
         return returns
 
 
-def QueryDB(selection, limit=100, media_type=None):
+def query_tag_stats(selection, limit=100):
     Log.Debug("Limit is set to %s" % limit)
-    queries = {
-        "all": "SELECT tags.tag, tags.tag_type, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1 GROUP BY tags.tag,tags.tag_type ORDER BY Total desc",
-        "actor": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 6 GROUP BY tags.tag ORDER BY Total desc",
-        "director": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 4 GROUP BY tags.tag ORDER BY Total desc",
-        "writer": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 5 GROUP BY tags.tag ORDER BY Total desc",
-        "genre": "SELECT tags.tag, COUNT(tags.id) AS Total FROM tags LEFT JOIN taggings ON tags.id = taggings.tag_id WHERE tags.tag_type = 1 GROUP BY tags.tag ORDER BY Total desc",
-        "view_count": "SELECT "
-    }
-    if selection not in queries:
-        return False
-    else:
-        query = queries[selection]
-
-    query = query + " LIMIT %s;" % limit
 
     try:
         import apsw
@@ -400,33 +374,194 @@ def QueryDB(selection, limit=100, media_type=None):
         Log.Debug("Shit, we got the library!")
         connection = apsw.Connection(os.environ['LIBRARY_DB'])
         cursor = connection.cursor()
+
         results = []
+
+        options = ["all", "actor", "director", "writer", "genre"]
+
+        if selection not in options:
+            return False
+
         if selection == "all":
-            for title, tag_type, tag_count in cursor.execute(query):
-                tag_title = 'unknown'
-                if tag_type == 6:
-                    tag_title = "actor"
-                if tag_type == 4:
-                    tag_title = "director"
-                if tag_type == 5:
-                    tag_title = "writer"
-                if tag_type == 1:
-                    tag_title = "genre"
+            fetch_values = "tags.tag, tags.tag_type, mt.metadata_type, mt.user_thumb_url, mt.user_art_url, mt.id, " \
+                           "COUNT(tags.id)"
+            tag_selection = "tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1"
+
+        if selection == "actor":
+            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            tag_selection = "tags.tag_type = 6"
+
+        if selection == "director":
+            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            tag_selection = "tags.tag_type = 4"
+
+        if selection == "writer":
+            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            tag_selection = "tags.tag_type = 5"
+
+        if selection == "genre":
+            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            tag_selection = "tags.tag_type = 5"
+
+        query = """SELECT %s
+                        AS Total FROM tags
+                        LEFT JOIN taggings ON tags.id = taggings.tag_id
+                        INNER JOIN metadata_items AS mt
+                        ON taggings.metadata_item_id = mt.id
+                        WHERE %s
+                        GROUP BY tags.tag,tags.tag_type
+                        ORDER BY Total
+                        desc LIMIT %s;""" % (fetch_values, tag_selection, limit)
+
+        if selection == "all":
+            for title, tag_type,  meta_type, meta_thumb, meta_art, ratingkey, tag_count in cursor.execute(query):
+                tag_types = {
+                    1: "genre",
+                    4: "director",
+                    5: "writer",
+                    6: "actor"
+                }
+
+                if tag_type in tag_types:
+                    tag_title = tag_types[tag_type]
+                else:
+                    tag_title = "unknown"
+
+                meta_types = {
+                    1: "movie",
+                    2: "show",
+                    4: "episode",
+                    9: "album",
+                    10: "track"
+                }
+                if meta_type in meta_types:
+                    meta_type = meta_types[meta_type]
 
                 dicts = {
                     "title": title,
                     "type": tag_title,
-                    "count": tag_count
+                    "count": tag_count,
+                    "metaType": meta_type,
+                    "thumb": meta_thumb,
+                    "art": meta_art,
+                    "ratingKey": ratingkey
                 }
+
                 results.append(dicts)
         else:
-            for title, tag_count in cursor.execute(query):
+            for tag, thumb, art, ratingkey, count in cursor.execute(query):
                 dicts = {
-                    "title": title,
-                    "count": tag_count
+                    "title": tag,
+                    "thumb": thumb,
+                    "art": art,
+                    "ratingKey": ratingkey,
+                    "count": count
                 }
+
                 results.append(dicts)
 
+        return results
+    else:
+        Log.Debug("No DB HERE, FUCKER.")
+        return False
+
+
+def query_media_stats(headers):
+
+    if "Limit" in headers:
+        limit = headers["Limit"]
+        del headers["Limit"]
+    else:
+        limit = None
+
+    meta_types = {
+        "movie": 1,
+        "show": 2,
+        "episode": 4,
+        "album": 9,
+        "track": 10
+    }
+
+    if "Type" in headers:
+        if headers["Type"] in meta_types:
+            headers['Type'] = meta_types[headers['Type']]
+
+    Log.Debug("Limit is set to %s" % limit)
+
+    try:
+        import apsw
+    except ImportError as ex:
+        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
+        apsw = None
+
+    if apsw is not None:
+        Log.Debug("Shit, we got the librarys!")
+        connection = apsw.Connection(os.environ['LIBRARY_DB'])
+        cursor = connection.cursor()
+
+        if limit is not None:
+            limit = "LIMIT %s" % limit
+        else:
+            limit = ""
+
+        lines = []
+        query_selector = ""
+        if len(headers.keys()) != 0:
+            Log.Debug("We have headers...")
+            selectors = {
+                "Userid": "accounts.id",
+                "Username": "accounts.name",
+                "Type": "mi.metadata_type",
+                "Title": "mi.title",
+                "Count": "sm.count",
+                "Duration": "sm.duration",
+                "Device": "device.name"
+            }
+
+            for header_key, value in headers.items():
+                if header_key in selectors:
+                    Log.Debug("Header key %s is present" % header_key)
+                    header_key = selectors[header_key]
+                    lines.append("%s = '%s'" % (header_key, value))
+
+        if bool(lines):
+            Log.Debug("We have lines too...")
+            query_selector = "WHERE " + "AND".join(lines)
+
+        query = """SELECT accounts.id, accounts.name,
+                mi.id AS media_id, mi.title,
+                sm.count, sm.duration, sm.timespan, sm.at, sm.device_id,
+                devices.name,
+                mi.metadata_type, mi.user_thumb_url, mi.user_art_url from accounts
+                INNER JOIN metadata_items AS mi 
+                   ON sm.id = mi.id
+                INNER JOIN statistics_media AS sm 
+                   ON accounts.id = sm.account_id
+                INNER JOIN devices
+                   ON devices.id = sm.device_id
+                %s
+                ORDER BY sm.count desc
+                %s;""" % (query_selector, limit)
+
+        Log.Debug("Querys is '%s'" % query)
+        results = []
+        for user_id, user_name, media_id, title, count, duration, timespan, lastViewed, device_id, device_name, meta_type, thumb, art in cursor.execute(query):
+            dict = {
+                "user_id": user_id,
+                "userName": user_name,
+                "ratingKey": media_id,
+                "title": title,
+                "count": count,
+                "duration": duration,
+                "timespan": timespan,
+                "lastViewed": lastViewed,
+                "type": meta_type,
+                "thumb": thumb,
+                "art": art,
+                "device_name": device_name,
+                "device_id": device_id
+            }
+            results.append(dict)
         return results
     else:
         Log.Debug("No DB HERE, FUCKER.")

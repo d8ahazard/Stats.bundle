@@ -102,16 +102,7 @@ class StatContainer(CustomContainer):
         self.show_size = False
         self.dict = dict
         self.name = "Tag"
-        allowed_attributes = [
-            "tag",
-            "type",
-            "tag_type",
-            "tag_count",
-            "title",
-            "count",
-            "tags"
-        ]
-
+        allowed_attributes = None
         allowed_children = [
             "Connection"
         ]
