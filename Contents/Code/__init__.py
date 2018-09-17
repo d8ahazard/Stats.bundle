@@ -509,13 +509,10 @@ def query_media_stats(headers):
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
             selectors = {
-                "Userid": "accounts.id",
-                "Username": "accounts.name",
+                "Userid": "acc.id",
+                "Username": "acc.name",
                 "Type": "mi.metadata_type",
-                "Title": "mi.title",
-                "Count": "sm.count",
-                "Duration": "sm.duration",
-                "Device": "device.name"
+                "Title": "mi.title"
             }
 
             for header_key, value in headers.items():
@@ -528,38 +525,31 @@ def query_media_stats(headers):
             Log.Debug("We have lines too...")
             query_selector = "WHERE " + "AND".join(lines)
 
-        query = """SELECT accounts.id, accounts.name,
-                mi.id AS media_id, mi.title,
-                sm.count, sm.duration, sm.timespan, sm.at, sm.device_id,
-                devices.name,
-                mi.metadata_type, mi.user_thumb_url, mi.user_art_url from accounts
-                INNER JOIN metadata_items AS mi 
-                   ON sm.id = mi.id
-                INNER JOIN statistics_media AS sm 
-                   ON accounts.id = sm.account_id
-                INNER JOIN devices
-                   ON devices.id = sm.device_id
+        query = """SELECT mi.id AS media_id, 
+                    metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
+                    mi.metadata_type, mi.user_thumb_url, mi.user_art_url,
+                    acc.id, acc.name from metadata_item_views
+                    INNER JOIN metadata_items AS mi 
+                       ON metadata_item_views.title = mi.title
+                    INNER JOIN accounts as acc
+                       ON acc.id = metadata_item_views.account_id
                 %s
-                ORDER BY sm.count desc
+                ORDER BY metadata_item_views.viewed_at desc
                 %s;""" % (query_selector, limit)
 
         Log.Debug("Querys is '%s'" % query)
         results = []
-        for user_id, user_name, media_id, title, count, duration, timespan, lastViewed, device_id, device_name, meta_type, thumb, art in cursor.execute(query):
+        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(query):
             dict = {
                 "user_id": user_id,
                 "userName": user_name,
-                "ratingKey": media_id,
+                "ratingKey": rating_key,
                 "title": title,
-                "count": count,
-                "duration": duration,
-                "timespan": timespan,
-                "lastViewed": lastViewed,
+                "grandparentTitle": grandparent_title,
+                "lastViewed": viewed_at,
                 "type": meta_type,
                 "thumb": thumb,
-                "art": art,
-                "device_name": device_name,
-                "device_id": device_id
+                "art": art
             }
             results.append(dict)
         return results
