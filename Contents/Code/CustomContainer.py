@@ -143,7 +143,7 @@ class AnyContainer(CustomContainer):
         self.dict = dict
         self.name = name
         allowed_attributes = None
-        allowed_children = ["Media", "Stats", 'View']
+        allowed_children = None
 
         CustomContainer.__init__(self, allowed_attributes, allowed_children)
 

@@ -235,6 +235,7 @@ def User():
             users1[user_name] = []
         temp_dict = users1[user_name]
         Log.Debug("Appending record '%s'" % JSON.StringFromObject(record))
+        del(record["userName"])
         temp_dict.append(dict(record))
         users1[user_name] = temp_dict
 
@@ -243,20 +244,24 @@ def User():
         if user_name not in users2:
             users2[user_name] = []
         temp_dict = users2[user_name]
+        del(record["userName"])
         temp_dict.append(dict(record))
         users2[user_name] = temp_dict
 
     for name in users1:
-        uc = UserContainer({"Name": name})
+        id = users1[name][0]["user_id"]
+        uc = UserContainer({"name": name, "id": id})
         ac = AnyContainer(None, "Media")
         Log.Debug("Creating container1 for %s" % name)
         for record in users1[name]:
+            del(record["user_id"])
             Log.Debug("Adding record")
             vc = ViewContainer(record)
             ac.add(vc)
         uc.add(ac)
         ac = AnyContainer(None, "Stats")
         for record in users2[name]:
+            del(record["user_id"])
             vc = ViewContainer(record)
             ac.add(vc)
         uc.add(ac)
