@@ -76,7 +76,7 @@ def Start():
     DirectoryObject.thumb = R(ICON)
     HTTP.CacheTime = 5
     ValidatePrefs()
-    init_apsw()
+    os.environ["APSW_LOADED"] = init_apsw()
 
 
 @handler(PREFIX, NAME)
@@ -722,7 +722,8 @@ def query_library_stats(headers):
 def fetch_cursor():
     cursor = None
 
-    if apsw is not None:
+    if os.environ["APSW_LOADED"] == "True":
+        import apsw
         Log.Debug("Shit, we got the library!")
         connection = apsw.Connection(os.environ['LIBRARY_DB'])
         cursor = connection.cursor()
@@ -752,6 +753,7 @@ def vcr_ver():
 
 
 def init_apsw():
+    path = None
     try:
         platforms = {
             "darwin": "MacOSX",
@@ -810,9 +812,9 @@ def init_apsw():
                     Log.Debug("System path is %r", sys.path)
 
             import apsw
-            return True
+            return "True"
         else:
             Log.debug("No path!")
     except Exception as ex:
         Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
-    return None
+    return "False"
