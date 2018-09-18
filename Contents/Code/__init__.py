@@ -804,14 +804,20 @@ def init_apsw():
             Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
 
         if path is not None:
+            path = list(reversed(path))
             for check in path:
                 Log.Debug("Checking path '%s" % check)
+                valid = False
                 if not os.path.exists(check):
                     Log.Error("Path Doesn't exist, foo")
+                else:
+                    valid = True
 
                 if check in sys.path:
+                    valid = False
                     Log.Debug("Path already in system path")
-                else:
+
+                if valid:
                     Log.Debug("Inserting system path")
                     sys.path.insert(0, check)
                     Log.Debug("System path is %r", sys.path)
