@@ -38,6 +38,11 @@ Log.Debug("Setting DB path to '%s'" % dbPath)
 os.environ['LIBRARY_DB'] = dbPath
 os.environ["PMS_PATH"] = pmsPath
 
+os_platform = False
+path = None
+
+
+
 # ------------------------------------------------
 # Libraries
 # ------------------------------------------------
@@ -71,6 +76,7 @@ def Start():
     DirectoryObject.thumb = R(ICON)
     HTTP.CacheTime = 5
     ValidatePrefs()
+    init_apsw()
 
 
 @handler(PREFIX, NAME)
@@ -715,9 +721,38 @@ def query_library_stats(headers):
 
 def fetch_cursor():
     cursor = None
-    os_platform = False
+
+    if apsw is not None:
+        Log.Debug("Shit, we got the library!")
+        connection = apsw.Connection(os.environ['LIBRARY_DB'])
+        cursor = connection.cursor()
+    return cursor
+
+
+def vcr_ver():
+    msvcr_map = {
+        'msvcr120.dll': 'vc12',
+        'msvcr130.dll': 'vc14'
+    }
     try:
-        path = None
+        import ctypes.util
+
+        # Retrieve linked msvcr dll
+        name = ctypes.util.find_msvcrt()
+
+        # Return VC++ version from map
+        if name not in msvcr_map:
+            Log.Error('Unknown VC++ runtime: %r', name)
+            return None
+
+        return msvcr_map[name]
+    except Exception as ex:
+        Log.Error('Unable to retrieve VC++ runtime version: %s' % ex, exc_info=True)
+        return None
+
+
+def init_apsw():
+    try:
         platforms = {
             "darwin": "MacOSX",
             "linux2": "Linux",
@@ -749,59 +784,35 @@ def fetch_cursor():
             ucs = os.path.join(vcr, ucs)
 
         Log.Debug('UCS, son: %r', ucs)
-
-        path = None
         if ucs and os_platform:
-            path = os.path.join(pmsPath, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform, proc, ucs)
+            path = []
+            temp = os.path.join(pmsPath, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
+            path.append(temp)
+            temp = os.path.join(temp, proc)
+            path.append(temp)
+            temp = os.path.join(temp, ucs)
+            path.append(temp)
             Log.Debug("Path for plugin is '%s" % path)
         else:
             Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
-            return None
 
         if path is not None:
-            Log.Debug("Path is valid")
-            if not os.path.exists(path):
-                Log.Error("Path Doesn't exist, foo")
-                return None
+            for check in path:
+                Log.Debug("Checking path '%s" % check)
+                if not os.path.exists(check):
+                    Log.Error("Path Doesn't exist, foo")
 
-            if path in sys.path:
-                Log.Debug("Path already in system path")
-            else:
-                Log.Debug("Inserting system path")
-                sys.path.insert(0, path)
+                if check in sys.path:
+                    Log.Debug("Path already in system path")
+                else:
+                    Log.Debug("Inserting system path")
+                    sys.path.insert(0, check)
+                    Log.Debug("System path is %r", sys.path)
 
             import apsw
+            return True
         else:
             Log.debug("No path!")
-            return None
     except Exception as ex:
         Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
-        apsw = None
-
-    if apsw is not None:
-        Log.Debug("Shit, we got the librarys!")
-        connection = apsw.Connection(os.environ['LIBRARY_DB'])
-        cursor = connection.cursor()
-    return cursor
-
-
-def vcr_ver():
-    MSVCR_MAP = {
-        'msvcr120.dll': 'vc12',
-        'msvcr130.dll': 'vc14'
-    }
-    try:
-        import ctypes.util
-
-        # Retrieve linked msvcr dll
-        name = ctypes.util.find_msvcrt()
-
-        # Return VC++ version from map
-        if name not in MSVCR_MAP:
-            Log.Error('Unknown VC++ runtime: %r', name)
-            return None
-
-        return MSVCR_MAP[name]
-    except Exception as ex:
-        Log.Error('Unable to retrieve VC++ runtime version: %s' % ex, exc_info=True)
-        return None
+    return None
