@@ -719,7 +719,7 @@ def fetch_cursor():
     try:
         path = None
         platforms = {
-            "Darwin": "MacOSX",
+            "darwin": "MacOSX",
             "linux2": "Linux",
             "freebsd": "FreeBSD",
             "win32": "Windows"
