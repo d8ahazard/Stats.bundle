@@ -10,10 +10,8 @@
 from __future__ import print_function
 
 import StringIO
-import ctypes
 import glob
 import os
-import struct
 import sys
 from zipfile import ZipFile, ZIP_DEFLATED
 import log_helper
@@ -23,7 +21,6 @@ from helpers import PathHelper
 from lib import Plex
 from helpers.system import SystemHelper
 from helpers.variable import pms_path
-
 
 from subzero.lib.io import FileIO
 
@@ -77,7 +74,11 @@ def Start():
     ValidatePrefs()
     distribution = None
     libraries_path = os.path.join(pms_path, "Plug-ins", "Stats.bundle", "Contents", "Libraries")
-    insert_paths(distribution, libraries_path)
+    loaded = insert_paths(distribution, libraries_path)
+    if loaded:
+        os.environ["Loaded"] = "True"
+    else:
+        os.environ["Loaded"] = "False"
 
 
 @handler(PREFIX, NAME)
@@ -264,10 +265,11 @@ def User():
                 ac.add(vc)
             uc.add(ac)
             ac = AnyContainer(None, "Stats")
-            for record in users2[name]:
-                del (record["user_id"])
-                vc = ViewContainer(record)
-                ac.add(vc)
+            if name in users2:
+                for record in users2[name]:
+                    del (record["user_id"])
+                    vc = ViewContainer(record)
+                    ac.add(vc)
             uc.add(ac)
             mc.add(uc)
 
@@ -721,7 +723,7 @@ def query_library_stats(headers):
 def fetch_cursor():
     cursor = None
 
-    if True:
+    if os.environ["Loaded"]:
         import apsw
         Log.Debug("Shit, we got the library!")
         connection = apsw.Connection(os.environ['LIBRARY_DB'])
@@ -757,86 +759,6 @@ def init_apsw():
     except ImportError:
         Log.Error("Shit, module not imported")
     pass
-
-# def init_apsw():
-#     path = None
-#     try:
-#         platforms = {
-#             "darwin": "MacOSX",
-#             "linux2": "Linux",
-#             "freebsd": "FreeBSD",
-#             "win32": "Windows"
-#         }
-#
-#         Log.Debug("Sys platform is %s" % sys.platform)
-#
-#         for platform in platforms:
-#             if sys.platform in platform:
-#                 os_platform = platforms[platform]
-#
-#         size = struct.calcsize("P") * 8
-#         if size == 32:
-#             proc = "i386"
-#         else:
-#             proc = "x86_64"
-#
-#         um = {
-#             65535: 'ucs2',
-#             1114111: 'ucs4'
-#         }
-#
-#         ucs = um.get(sys.maxunicode)
-#
-#         if os_platform == "Windows":
-#             vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
-#             ucs = os.path.join(vcr, ucs)
-#         fullpath = ""
-#         Log.Debug('UCS, son: %r', ucs)
-#         if ucs and os_platform:
-#             path = []
-#             temp = os.path.join(pms_path, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
-#             path.append(temp)
-#             if os_platform == "MacOSX":
-#                 clear = os.path.join(temp, "i386")
-#                 if clear in sys.path:
-#                     Log.Debug("Removing i386 path")
-#                     sys.path.remove(clear)
-#             temp = os.path.join(temp, proc)
-#             path.append(temp)
-#             fullpath = os.path.join(temp, ucs)
-#             path.append(fullpath)
-#             Log.Debug("Path for plugin is '%s" % path)
-#         else:
-#             Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
-#
-#         if path is not None:
-#             path = list(reversed(path))
-#             for check in path:
-#                 if not os.path.exists(check) or check in sys.path:
-#                     valid = False
-#                     if not os.path.exists(check):
-#                         Log.Debug("Path '%s' doesn't exist." % check)
-#                     else:
-#                         Log.Debug("Path '%s' already added." % check)
-#                 else:
-#                     valid = True
-#
-#                 if valid:
-#                     Log.Debug("Adding '%s' to system path." % check)
-#                     sys.path.insert(0, check)
-#                     Log.Debug("System path is %r", sys.path)
-#
-#             if os_platform == "Windows":
-#                 import apsw
-#             else:
-#                 apsw = ctypes.cdll.LoadLibrary(os.path.join(fullpath, "apsw.so"))
-#
-#             return "True"
-#         else:
-#             Log.debug("No path!")
-#     except Exception as ex:
-#         Log.Error('Import exception for "apsw": %s', ex, exc_info=True)
-#     return "False"
 
 
 def insert_paths(distribution, libraries_path):
