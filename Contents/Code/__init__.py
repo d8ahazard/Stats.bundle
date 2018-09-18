@@ -10,6 +10,7 @@
 from __future__ import print_function
 
 import StringIO
+import ctypes
 import glob
 import os
 import struct
@@ -18,12 +19,18 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import log_helper
 from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
     ViewContainer, AnyContainer
+from helpers import PathHelper
 from lib import Plex
 from helpers.system import SystemHelper
 from helpers.variable import pms_path
 
 
 from subzero.lib.io import FileIO
+
+UNICODE_MAP = {
+            65535: 'ucs2',
+            1114111: 'ucs4'
+        }
 
 pms_path = pms_path()
 Log.Debug("New PMS Path is '%s'" % pms_path)
@@ -68,7 +75,9 @@ def Start():
     DirectoryObject.thumb = R(ICON)
     HTTP.CacheTime = 5
     ValidatePrefs()
-    os.environ["APSW_LOADED"] = init_apsw()
+    distribution = None
+    libraries_path = os.path.join(pms_path, "Plug-ins", "Stats.bundle", "Contents", "Libraries")
+    insert_paths(distribution, libraries_path)
 
 
 @handler(PREFIX, NAME)
@@ -714,7 +723,7 @@ def query_library_stats(headers):
 def fetch_cursor():
     cursor = None
 
-    if os.environ["APSW_LOADED"] == "True":
+    if True:
         import apsw
         Log.Debug("Shit, we got the library!")
         connection = apsw.Connection(os.environ['LIBRARY_DB'])
@@ -745,77 +754,190 @@ def vcr_ver():
 
 
 def init_apsw():
-    path = None
     try:
-        platforms = {
-            "darwin": "MacOSX",
-            "linux2": "Linux",
-            "freebsd": "FreeBSD",
-            "win32": "Windows"
-        }
+        import apsw
+    except ImportError:
+        Log.Error("Shit, module not imported")
+    pass
 
-        Log.Debug("Sys platform is %s" % sys.platform)
+# def init_apsw():
+#     path = None
+#     try:
+#         platforms = {
+#             "darwin": "MacOSX",
+#             "linux2": "Linux",
+#             "freebsd": "FreeBSD",
+#             "win32": "Windows"
+#         }
+#
+#         Log.Debug("Sys platform is %s" % sys.platform)
+#
+#         for platform in platforms:
+#             if sys.platform in platform:
+#                 os_platform = platforms[platform]
+#
+#         size = struct.calcsize("P") * 8
+#         if size == 32:
+#             proc = "i386"
+#         else:
+#             proc = "x86_64"
+#
+#         um = {
+#             65535: 'ucs2',
+#             1114111: 'ucs4'
+#         }
+#
+#         ucs = um.get(sys.maxunicode)
+#
+#         if os_platform == "Windows":
+#             vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
+#             ucs = os.path.join(vcr, ucs)
+#         fullpath = ""
+#         Log.Debug('UCS, son: %r', ucs)
+#         if ucs and os_platform:
+#             path = []
+#             temp = os.path.join(pms_path, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
+#             path.append(temp)
+#             if os_platform == "MacOSX":
+#                 clear = os.path.join(temp, "i386")
+#                 if clear in sys.path:
+#                     Log.Debug("Removing i386 path")
+#                     sys.path.remove(clear)
+#             temp = os.path.join(temp, proc)
+#             path.append(temp)
+#             fullpath = os.path.join(temp, ucs)
+#             path.append(fullpath)
+#             Log.Debug("Path for plugin is '%s" % path)
+#         else:
+#             Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
+#
+#         if path is not None:
+#             path = list(reversed(path))
+#             for check in path:
+#                 if not os.path.exists(check) or check in sys.path:
+#                     valid = False
+#                     if not os.path.exists(check):
+#                         Log.Debug("Path '%s' doesn't exist." % check)
+#                     else:
+#                         Log.Debug("Path '%s' already added." % check)
+#                 else:
+#                     valid = True
+#
+#                 if valid:
+#                     Log.Debug("Adding '%s' to system path." % check)
+#                     sys.path.insert(0, check)
+#                     Log.Debug("System path is %r", sys.path)
+#
+#             if os_platform == "Windows":
+#                 import apsw
+#             else:
+#                 apsw = ctypes.cdll.LoadLibrary(os.path.join(fullpath, "apsw.so"))
+#
+#             return "True"
+#         else:
+#             Log.debug("No path!")
+#     except Exception as ex:
+#         Log.Error('Import exception for "apsw": %s', ex, exc_info=True)
+#     return "False"
 
-        for platform in platforms:
-            if sys.platform in platform:
-                os_platform = platforms[platform]
 
-        size = struct.calcsize("P") * 8
-        if size == 32:
-            proc = "i386"
+def insert_paths(distribution, libraries_path):
+
+    # Retrieve system details
+    system = SystemHelper.name()
+    architecture = SystemHelper.architecture()
+
+    if not architecture:
+        Log.Debug('Unable to retrieve system architecture')
+        return False
+
+    Log.Debug('System: %r, Architecture: %r', system, architecture)
+
+    # Build architecture list
+    architectures = [architecture]
+
+    if architecture == 'i686':
+        # Fallback to i386
+        architectures.append('i386')
+
+    # Insert library paths
+    found = False
+
+    for arch in architectures + ['universal']:
+        if insert_architecture_paths(libraries_path, system, arch):
+            Log.Debug('Inserted libraries path for system: %r, arch: %r', system, arch)
+            found = True
+
+    # Display interface message if no libraries were found
+    if not found:
+        if distribution and distribution.get('name'):
+            message = 'Unable to find compatible native libraries in the %s distribution' % distribution['name']
         else:
-            proc = "x86_64"
+            message = 'Unable to find compatible native libraries'
 
-        um = {
-            65535: 'ucs2',
-            1114111: 'ucs4'
-        }
+        # InterfaceMessages.add(60, '%s (system: %r, architecture: %r)', message, system, architecture)
 
-        ucs = um.get(sys.maxunicode)
+    return found
 
-        if os_platform == "Windows":
-            vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
-            ucs = os.path.join(vcr, ucs)
 
-        Log.Debug('UCS, son: %r', ucs)
-        if ucs and os_platform:
-            path = []
-            temp = os.path.join(pms_path, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
-            path.append(temp)
-            if os_platform == "MacOSX":
-                clear = os.path.join(temp, "i386")
-                if clear in sys.path:
-                    Log.Debug("Removing i386 path")
-                    sys.path.remove(clear)
-            temp = os.path.join(temp, proc)
-            path.append(temp)
-            temp = os.path.join(temp, ucs)
-            path.append(temp)
-            Log.Debug("Path for plugin is '%s" % path)
-        else:
-            Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
+def insert_architecture_paths(libraries_path, system, architecture):
+    architecture_path = os.path.join(libraries_path, system, architecture)
 
-        if path is not None:
-            path = list(reversed(path))
-            for check in path:
-                if not os.path.exists(check) or check in sys.path:
-                    valid = False
-                    if not os.path.exists(check):
-                        Log.Debug("Path '%s' doesn't exist." % check)
-                    else:
-                        Log.Debug("Path '%s' already added." % check)
-                else:
-                    valid = True
+    if not os.path.exists(architecture_path):
+        return False
 
-                if valid:
-                    Log.Debug("Adding '%s' to system path." % check)
-                    sys.path.insert(0, check)
-                    Log.Debug("System path is %r", sys.path)
+    # Architecture libraries
+    PathHelper.insert(libraries_path, system, architecture)
 
-            import apsw
-            return "True"
-        else:
-            Log.debug("No path!")
-    except Exception as ex:
-        Log.Error('Import exception for "apsw": %s', ex, exc_info=True)
-    return "False"
+    # System libraries
+    if system == 'Windows':
+        # Windows libraries (VC++ specific)
+        insert_paths_windows(libraries_path, system, architecture)
+    else:
+        # Darwin/FreeBSD/Linux libraries
+        insert_paths_unix(libraries_path, system, architecture)
+
+    return True
+
+
+def insert_paths_unix(libraries_path, system, architecture):
+    # UCS specific libraries
+    ucs = UNICODE_MAP.get(sys.maxunicode)
+    Log.Debug('UCS: %r', ucs)
+
+    if ucs:
+        PathHelper.insert(libraries_path, system, architecture, ucs)
+
+    # CPU specific libraries
+    cpu_type = SystemHelper.cpu_type()
+    page_size = SystemHelper.page_size()
+
+    Log.Debug('CPU Type: %r', cpu_type)
+    Log.Debug('Page Size: %r', page_size)
+
+    if cpu_type:
+        PathHelper.insert(libraries_path, system, architecture, cpu_type)
+
+        if page_size:
+            PathHelper.insert(libraries_path, system, architecture, '%s_%s' % (cpu_type, page_size))
+
+    # UCS + CPU specific libraries
+    if cpu_type and ucs:
+        PathHelper.insert(libraries_path, system, architecture, cpu_type, ucs)
+
+        if page_size:
+            PathHelper.insert(libraries_path, system, architecture, '%s_%s' % (cpu_type, page_size), ucs)
+
+
+def insert_paths_windows(libraries_path, system, architecture):
+    vcr = SystemHelper.vcr_version() or 'vc12'  # Assume "vc12" if call fails
+    ucs = UNICODE_MAP.get(sys.maxunicode)
+
+    Log.Debug('VCR: %r, UCS: %r', vcr, ucs)
+
+    # VC++ libraries
+    PathHelper.insert(libraries_path, system, architecture, vcr)
+
+    # UCS libraries
+    if ucs:
+        PathHelper.insert(libraries_path, system, architecture, vcr, ucs)

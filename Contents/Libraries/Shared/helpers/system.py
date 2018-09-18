@@ -112,13 +112,6 @@ class SystemHelper(object):
     def architecture(cls):
         """Retrieve system architecture (i386, i686, x86_64)"""
 
-        # Use `cpu_architecture` value from advanced configuration (if defined)
-        cpu_architecture = Configuration.advanced['libraries'].get('cpu_architecture')
-
-        if cpu_architecture:
-            log.info('Using CPU Architecture from advanced configuration: %r', cpu_architecture)
-            return cpu_architecture
-
         # Determine architecture from platform attributes
         bits, _ = platform.architecture()
         machine = platform.machine()
