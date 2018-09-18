@@ -747,16 +747,13 @@ def fetch_cursor():
 
         if os_platform == "Windows":
             ucs = os.path.join(vcr, ucs)
-            ext = ".pyd"
-        else:
-            ext = ".so"
 
         Log.Debug('UCS, son: %r', ucs)
 
         path = None
         if ucs and os_platform:
             path = os.path.join(pmsPath, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform, proc, ucs)
-            Log.Debug("Plath for plugin is '%s" % path)
+            Log.Debug("Path for plugin is '%s" % path)
         else:
             Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
             return None
