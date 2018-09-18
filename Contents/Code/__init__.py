@@ -20,26 +20,17 @@ from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContai
     ViewContainer, AnyContainer
 from lib import Plex
 from helpers.system import SystemHelper
-import helpers.variable
+from helpers.variable import pms_path
+
 
 from subzero.lib.io import FileIO
 
-# Try to init apsw the hard way
 pms_path = pms_path()
 Log.Debug("New PMS Path is '%s'" % pms_path)
-if sys.platform == "win32":
-    if 'PLEXLOCALAPPDATA' in os.environ:
-        key = 'PLEXLOCALAPPDATA'
-    else:
-        key = 'LOCALAPPDATA'
-    pmsPath = os.path.join(os.environ[key], 'Plex Media Server')
-else:
-    pmsPath = os.path.join(os.environ["HOME"], "Library", "Application Support", "Plex Media Server")
-
-dbPath = os.path.join(pmsPath, "Plug-in Support", "Databases", "com.plexapp.plugins.library.db")
+dbPath = os.path.join(pms_path, "Plug-in Support", "Databases", "com.plexapp.plugins.library.db")
 Log.Debug("Setting DB path to '%s'" % dbPath)
 os.environ['LIBRARY_DB'] = dbPath
-os.environ["PMS_PATH"] = pmsPath
+os.environ["PMS_PATH"] = pms_path
 
 os_platform = False
 path = None
@@ -789,7 +780,7 @@ def init_apsw():
         Log.Debug('UCS, son: %r', ucs)
         if ucs and os_platform:
             path = []
-            temp = os.path.join(pmsPath, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
+            temp = os.path.join(pms_path, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
             path.append(temp)
             if os_platform == "MacOSX":
                 clear = os.path.join(temp, "i386")
