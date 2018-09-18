@@ -240,7 +240,6 @@ def User():
             if user_name not in users1:
                 users1[user_name] = []
             temp_dict = users1[user_name]
-            Log.Debug("Appending record '%s'" % JSON.StringFromObject(record))
             del (record["userName"])
             temp_dict.append(dict(record))
             users1[user_name] = temp_dict
@@ -261,7 +260,6 @@ def User():
             Log.Debug("Creating container1 for %s" % name)
             for record in users1[name]:
                 del (record["user_id"])
-                Log.Debug("Adding record")
                 vc = ViewContainer(record)
                 ac.add(vc)
             uc.add(ac)
