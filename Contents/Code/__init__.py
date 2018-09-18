@@ -8,23 +8,21 @@
 ############################################################################
 
 from __future__ import print_function
+
 import StringIO
 import glob
-from plugin.core.environment import Environment, translate as _
 import os
-import log_helper
-
-Environment.setup(Core, Dict, Platform, Prefs)
-
-from zipfile import ZipFile, ZIP_DEFLATED
-from plex_database.core import db
+import struct
 import sys
+from zipfile import ZipFile, ZIP_DEFLATED
 
-from subzero.lib.io import FileIO
-
+import log_helper
 from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
     ViewContainer, AnyContainer
 from lib import Plex
+from subzero.lib.io import FileIO
+
+# Try to init apsw the hard way
 
 if sys.platform == "win32":
     if 'PLEXLOCALAPPDATA' in os.environ:
@@ -38,14 +36,15 @@ else:
 dbPath = os.path.join(pmsPath, "Plug-in Support", "Databases", "com.plexapp.plugins.library.db")
 Log.Debug("Setting DB path to '%s'" % dbPath)
 os.environ['LIBRARY_DB'] = dbPath
+os.environ["PMS_PATH"] = pmsPath
 
 # ------------------------------------------------
 # Libraries
 # ------------------------------------------------
-from plugin.core.libraries.manager import LibrariesManager
-
-LibrariesManager.setup(cache=True)
-LibrariesManager.test()
+# from plugin.core.libraries.manager import LibrariesManager
+#
+# LibrariesManager.setup(cache=False)
+# LibrariesManager.test()
 # Dummy Imports for PyCharm
 
 # import Framework.context
@@ -235,7 +234,7 @@ def User():
                 users1[user_name] = []
             temp_dict = users1[user_name]
             Log.Debug("Appending record '%s'" % JSON.StringFromObject(record))
-            del(record["userName"])
+            del (record["userName"])
             temp_dict.append(dict(record))
             users1[user_name] = temp_dict
 
@@ -244,7 +243,7 @@ def User():
             if user_name not in users2:
                 users2[user_name] = []
             temp_dict = users2[user_name]
-            del(record["userName"])
+            del (record["userName"])
             temp_dict.append(dict(record))
             users2[user_name] = temp_dict
 
@@ -254,14 +253,14 @@ def User():
             ac = AnyContainer(None, "Media")
             Log.Debug("Creating container1 for %s" % name)
             for record in users1[name]:
-                del(record["user_id"])
+                del (record["user_id"])
                 Log.Debug("Adding record")
                 vc = ViewContainer(record)
                 ac.add(vc)
             uc.add(ac)
             ac = AnyContainer(None, "Stats")
             for record in users2[name]:
-                del(record["user_id"])
+                del (record["user_id"])
                 vc = ViewContainer(record)
                 ac.add(vc)
             uc.add(ac)
@@ -404,17 +403,8 @@ def sort_headers(header_list, strict=False):
 def query_tag_stats(selection, limit=100):
     Log.Debug("Limit is set to %s" % limit)
 
-    try:
-        import apsw
-    except ImportError as ex:
-        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
-        apsw = None
-
-    if apsw is not None:
-        Log.Debug("Shit, we got the library!")
-        connection = apsw.Connection(os.environ['LIBRARY_DB'])
-        cursor = connection.cursor()
-
+    cursor = fetch_cursor()
+    if cursor is not None:
         results = []
 
         options = ["all", "actor", "director", "writer", "genre"]
@@ -454,7 +444,7 @@ def query_tag_stats(selection, limit=100):
                         desc LIMIT %s;""" % (fetch_values, tag_selection, limit)
 
         if selection == "all":
-            for title, tag_type,  meta_type, meta_thumb, meta_art, ratingkey, tag_count in cursor.execute(query):
+            for title, tag_type, meta_type, meta_thumb, meta_art, ratingkey, tag_count in cursor.execute(query):
                 tag_types = {
                     1: "genre",
                     4: "director",
@@ -502,12 +492,11 @@ def query_tag_stats(selection, limit=100):
 
         return results
     else:
-        Log.Debug("No DB HERE, FUCKER.")
+        Log.Error("DB Connection error!")
         return None
 
 
 def query_media_stats(headers):
-
     if "Limit" in headers:
         limit = headers["Limit"]
         del headers["Limit"]
@@ -528,17 +517,8 @@ def query_media_stats(headers):
 
     Log.Debug("Limit is set to %s" % limit)
 
-    try:
-        import apsw
-    except ImportError as ex:
-        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
-        apsw = None
-
-    if apsw is not None:
-        Log.Debug("Shit, we got the librarys!")
-        connection = apsw.Connection(os.environ['LIBRARY_DB'])
-        cursor = connection.cursor()
-
+    cursor = fetch_cursor()
+    if cursor is not None:
         if limit is not None:
             limit = "LIMIT %s" % limit
         else:
@@ -579,7 +559,8 @@ def query_media_stats(headers):
 
         Log.Debug("Querys is '%s'" % query)
         results = []
-        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(query):
+        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(
+                query):
             dictz = {
                 "user_id": user_id,
                 "userName": user_name,
@@ -628,7 +609,8 @@ def query_media_stats(headers):
                          ORDER BY sm.at DESC 
                          %s;""" % (query_selector, limit)
 
-        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(query2):
+        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(
+                query2):
             dictz = {
                 "user_id": user_id,
                 "userName": user_name,
@@ -645,7 +627,7 @@ def query_media_stats(headers):
 
         return [results, results2]
     else:
-        Log.Debug("No DB HERE, FUCKER.")
+        Log.Error("DB Connection error!")
         return None
 
 
@@ -670,17 +652,8 @@ def query_library_stats(headers):
 
     Log.Debug("Limit is set to %s" % limit)
 
-    try:
-        import apsw
-    except ImportError as ex:
-        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
-        apsw = None
-
-    if apsw is not None:
-        Log.Debug("Shit, we got the librarys!")
-        connection = apsw.Connection(os.environ['LIBRARY_DB'])
-        cursor = connection.cursor()
-
+    cursor = fetch_cursor()
+    if cursor is not None:
         if limit is not None:
             limit = "LIMIT %s" % limit
         else:
@@ -721,7 +694,8 @@ def query_library_stats(headers):
 
         Log.Debug("Querys is '%s'" % query)
         results = []
-        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(query):
+        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(
+                query):
             dictz = {
                 "user_id": user_id,
                 "userName": user_name,
@@ -734,3 +708,103 @@ def query_library_stats(headers):
                 "art": art
             }
             results.append(dictz)
+        return results
+    else:
+        Log.Error("Error connecting to DB!")
+
+
+def fetch_cursor():
+    cursor = None
+    os_platform = False
+    try:
+        path = None
+        platforms = {
+            "Darwin": "MacOSX",
+            "linux2": "Linux",
+            "freebsd": "FreeBSD",
+            "win32": "Windows"
+        }
+
+        Log.Debug("Sys platform is %s" % sys.platform)
+
+        for platform in platforms:
+            if sys.platform in platform:
+                os_platform = platforms[platform]
+
+        size = struct.calcsize("P") * 8
+        if size == 32:
+            proc = "i386"
+        else:
+            proc = "x86_64"
+
+        um = {
+            65535: 'ucs2',
+            1114111: 'ucs4'
+        }
+
+        vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
+        ucs = um.get(sys.maxunicode)
+
+        if os_platform == "Windows":
+            ucs = os.path.join(vcr, ucs)
+            ext = ".pyd"
+        else:
+            ext = ".so"
+
+        Log.Debug('UCS, son: %r', ucs)
+
+        path = None
+        if ucs and os_platform:
+            path = os.path.join(pmsPath, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform, proc, ucs)
+            Log.Debug("Plath for plugin is '%s" % path)
+        else:
+            Log.Error("Missing ucs - %s or os_platform - %s" % (ucs, os_platform))
+            return None
+
+        if path is not None:
+            Log.Debug("Path is valid")
+            if not os.path.exists(path):
+                Log.Error("Path Doesn't exist, foo")
+                return None
+
+            if path in sys.path:
+                Log.Debug("Path already in system path")
+            else:
+                Log.Debug("Inserting system path")
+                sys.path.insert(0, path)
+
+            import apsw
+        else:
+            Log.debug("No path!")
+            return None
+    except Exception as ex:
+        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
+        apsw = None
+
+    if apsw is not None:
+        Log.Debug("Shit, we got the librarys!")
+        connection = apsw.Connection(os.environ['LIBRARY_DB'])
+        cursor = connection.cursor()
+    return cursor
+
+
+def vcr_ver():
+    MSVCR_MAP = {
+        'msvcr120.dll': 'vc12',
+        'msvcr130.dll': 'vc14'
+    }
+    try:
+        import ctypes.util
+
+        # Retrieve linked msvcr dll
+        name = ctypes.util.find_msvcrt()
+
+        # Return VC++ version from map
+        if name not in MSVCR_MAP:
+            Log.Error('Unknown VC++ runtime: %r', name)
+            return None
+
+        return MSVCR_MAP[name]
+    except Exception as ex:
+        Log.Error('Unable to retrieve VC++ runtime version: %s' % ex, exc_info=True)
+        return None

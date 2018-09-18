@@ -1,3 +1,0 @@
-from plugin.preferences.options.o_sync.lists.liked import SyncListsLikedOption, SyncListsLikedPlaylistsOption
-from plugin.preferences.options.o_sync.lists.personal import SyncListsPersonalOption, SyncListsPersonalPlaylistsOption
-from plugin.preferences.options.o_sync.lists.watchlist import SyncListsWatchlistOption, SyncListsWatchlistPlaylistsOption

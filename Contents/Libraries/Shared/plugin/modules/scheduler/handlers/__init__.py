@@ -1,2 +1,0 @@
-from plugin.modules.scheduler.handlers.h_backup.maintenance_interval import BackupMaintenanceIntervalHandler
-from plugin.modules.scheduler.handlers.h_sync.interval import SyncIntervalHandler

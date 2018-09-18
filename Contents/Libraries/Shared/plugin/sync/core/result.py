@@ -1,2 +1,0 @@
-class SyncResult(object):
-    pass
