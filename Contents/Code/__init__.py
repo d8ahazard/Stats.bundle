@@ -784,14 +784,17 @@ def init_apsw():
         if os_platform == "Windows":
             vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
             ucs = os.path.join(vcr, ucs)
-        if os_platform == "MacOSX":
-            proc = "i386"
 
         Log.Debug('UCS, son: %r', ucs)
         if ucs and os_platform:
             path = []
             temp = os.path.join(pmsPath, "Plug-ins", "Stats.bundle", "Contents", "Libraries", os_platform)
             path.append(temp)
+            if os_platform == "MacOSX":
+                clear = os.path.join(temp, "i386")
+                if clear in sys.path:
+                    Log.Debug("Removing i386 path")
+                    sys.path.remove(clear)
             temp = os.path.join(temp, proc)
             path.append(temp)
             temp = os.path.join(temp, ucs)
