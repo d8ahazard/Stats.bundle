@@ -784,6 +784,8 @@ def init_apsw():
         if os_platform == "Windows":
             vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
             ucs = os.path.join(vcr, ucs)
+        if os_platform == "MacOSX":
+            proc = "i386"
 
         Log.Debug('UCS, son: %r', ucs)
         if ucs and os_platform:
