@@ -15,15 +15,18 @@ import os
 import struct
 import sys
 from zipfile import ZipFile, ZIP_DEFLATED
-
 import log_helper
 from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
     ViewContainer, AnyContainer
 from lib import Plex
+from helpers.system import SystemHelper
+import helpers.variable
+
 from subzero.lib.io import FileIO
 
 # Try to init apsw the hard way
-
+pms_path = pms_path()
+Log.Debug("New PMS Path is '%s'" % pms_path)
 if sys.platform == "win32":
     if 'PLEXLOCALAPPDATA' in os.environ:
         key = 'PLEXLOCALAPPDATA'
@@ -40,8 +43,6 @@ os.environ["PMS_PATH"] = pmsPath
 
 os_platform = False
 path = None
-
-
 
 # ------------------------------------------------
 # Libraries
@@ -806,19 +807,17 @@ def init_apsw():
         if path is not None:
             path = list(reversed(path))
             for check in path:
-                Log.Debug("Checking path '%s" % check)
-                valid = False
-                if not os.path.exists(check):
-                    Log.Error("Path Doesn't exist, foo")
+                if not os.path.exists(check) or check in sys.path:
+                    valid = False
+                    if not os.path.exists(check):
+                        Log.Debug("Path '%s' doesn't exist." % check)
+                    else:
+                        Log.Debug("Path '%s' already added." % check)
                 else:
                     valid = True
 
-                if check in sys.path:
-                    valid = False
-                    Log.Debug("Path already in system path")
-
                 if valid:
-                    Log.Debug("Inserting system path")
+                    Log.Debug("Adding '%s' to system path." % check)
                     sys.path.insert(0, check)
                     Log.Debug("System path is %r", sys.path)
 
@@ -827,5 +826,5 @@ def init_apsw():
         else:
             Log.debug("No path!")
     except Exception as ex:
-        Log.Debug('Unable to import "apsw": %s', ex, exc_info=True)
+        Log.Error('Import exception for "apsw": %s', ex, exc_info=True)
     return "False"
