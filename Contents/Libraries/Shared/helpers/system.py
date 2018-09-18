@@ -235,12 +235,6 @@ class SystemHelper(object):
     @classmethod
     def cpu_type(cls, executable_path=sys.executable):
         # Use `cpu_type` value from advanced configuration (if defined)
-        cpu_type = Configuration.advanced['libraries'].get('cpu_type')
-
-        if cpu_type:
-            log.info('Using CPU Type from advanced configuration: %r', cpu_type)
-            return cpu_type
-
         # Try retrieve cpu type via "/proc/cpuinfo"
         try:
             _, _, cpu_type = ArmHelper.identifier()

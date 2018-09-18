@@ -126,7 +126,7 @@ def ValidatePrefs():
     and stuff.
     """
 
-    dependencies = ['pychromecast', 'zeroconf']
+    dependencies = ["helpers"]
     log_helper.register_logging_handler(dependencies, level="DEBUG")
     return
 
@@ -874,6 +874,7 @@ def insert_paths(distribution, libraries_path):
             message = 'Unable to find compatible native libraries in the %s distribution' % distribution['name']
         else:
             message = 'Unable to find compatible native libraries'
+        Log.Debug(message)
 
         # InterfaceMessages.add(60, '%s (system: %r, architecture: %r)', message, system, architecture)
 
@@ -884,9 +885,11 @@ def insert_architecture_paths(libraries_path, system, architecture):
     architecture_path = os.path.join(libraries_path, system, architecture)
 
     if not os.path.exists(architecture_path):
+        Log.Debug("Arch path doesn't exist!!")
         return False
 
     # Architecture libraries
+    Log.Debug("inserting libs path")
     PathHelper.insert(libraries_path, system, architecture)
 
     # System libraries
@@ -906,6 +909,7 @@ def insert_paths_unix(libraries_path, system, architecture):
     Log.Debug('UCS: %r', ucs)
 
     if ucs:
+        Log.Debug("inserting UCS path")
         PathHelper.insert(libraries_path, system, architecture, ucs)
 
     # CPU specific libraries
@@ -916,16 +920,20 @@ def insert_paths_unix(libraries_path, system, architecture):
     Log.Debug('Page Size: %r', page_size)
 
     if cpu_type:
+        Log.Debug("Inserting CPU Type path")
         PathHelper.insert(libraries_path, system, architecture, cpu_type)
 
         if page_size:
+            Log.Debug("Page Size path")
             PathHelper.insert(libraries_path, system, architecture, '%s_%s' % (cpu_type, page_size))
 
     # UCS + CPU specific libraries
     if cpu_type and ucs:
+        Log.Debug("CPU + UCS path")
         PathHelper.insert(libraries_path, system, architecture, cpu_type, ucs)
 
         if page_size:
+            Log.Debug("And page size")
             PathHelper.insert(libraries_path, system, architecture, '%s_%s' % (cpu_type, page_size), ucs)
 
 
@@ -936,8 +944,10 @@ def insert_paths_windows(libraries_path, system, architecture):
     Log.Debug('VCR: %r, UCS: %r', vcr, ucs)
 
     # VC++ libraries
+    Log.Debug("Inserting vcr path")
     PathHelper.insert(libraries_path, system, architecture, vcr)
 
     # UCS libraries
     if ucs:
+        Log.Debug("Inserting UCS path")
         PathHelper.insert(libraries_path, system, architecture, vcr, ucs)

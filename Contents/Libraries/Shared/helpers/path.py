@@ -20,9 +20,11 @@ class PathHelper(object):
         path = os.path.join(base, system, architecture, *args)
 
         if path in sys.path:
+            log.debug("path exists in system path already: %r", StorageHelper.to_relative_path(path))
             return False
 
         if not os.path.exists(path):
+            log.debug("path doesn't exist: %r", StorageHelper.to_relative_path(path))
             return False
 
         sys.path.insert(0, path)
