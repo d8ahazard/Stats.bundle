@@ -742,10 +742,10 @@ def fetch_cursor():
             1114111: 'ucs4'
         }
 
-        vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
         ucs = um.get(sys.maxunicode)
 
         if os_platform == "Windows":
+            vcr = vcr_ver() or 'vc12'  # Assume "vc12" if call fails
             ucs = os.path.join(vcr, ucs)
 
         Log.Debug('UCS, son: %r', ucs)
