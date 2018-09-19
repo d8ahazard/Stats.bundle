@@ -322,40 +322,51 @@ def User():
     if records is not None:
         users1 = {}
         users2 = {}
-        for record in records[0]:
+        temp1 = records[0]
+        temp2 = records[1]
+        del records
+        for record in temp1:
             user_name = record["userName"]
             if user_name not in users1:
                 users1[user_name] = []
             del (record["userName"])
             users1[user_name].append(dict(record))
-
-        for record in records[1]:
+        temp1 = temp2
+        for record in temp1:
             user_name = record["userName"]
             if user_name not in users2:
                 users2[user_name] = []
             del (record["userName"])
             users2[user_name].append(dict(record))
-
+        del temp2
         for name in users1:
             user_id = users1[name][0]["user_id"]
             uc = UserContainer({"name": name, "id": user_id})
-            ac = AnyContainer(None, "Media")
+            ac = AnyContainer({"totalPlays": len(users1[name])}, "Media")
             Log.Debug("Creating container1 for %s" % name)
+            i = 0
             for record in users1[name]:
+                if i > 10:
+                    break
                 del (record["user_id"])
-                vc = ViewContainer(record)
-                ac.add(vc)
+                ac.add(ViewContainer(record))
+                i += 1
+
             uc.add(ac)
             ac = AnyContainer(None, "Stats")
             if name in users2:
+                ac = AnyContainer({"totalItems": len(users2[name])}, "Stats")
+                i = 0
                 for record in users2[name]:
+                    if i > 10:
+                        break
                     del (record["user_id"])
-                    vc = ViewContainer(record)
-                    ac.add(vc)
+                    ac.add(ViewContainer(record))
+                    i += 1
             uc.add(ac)
             mc.add(uc)
 
-    Log.Debug("Still alive")
+    Log.Debug("Still alive, returning data")
 
     return mc
 
@@ -568,10 +579,12 @@ def query_tag_stats(selection, limit=1000):
         return None
 
 
-def query_user_stats(headers, limit=1000):
+def query_user_stats(headers):
     if "Limit" in headers:
         limit = headers["Limit"]
         del headers["Limit"]
+    else:
+        limit = None
 
     meta_types = {
         "movie": 1,
@@ -580,23 +593,79 @@ def query_user_stats(headers, limit=1000):
         "album": 9,
         "track": 10
     }
-
     if "Type" in headers:
         if headers["Type"] in meta_types:
             headers['Type'] = meta_types[headers['Type']]
 
-    Log.Debug("Limit is set to %s" % limit)
-
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
-
+    query_types = "(1, 4, 10)"
     if cursor is not None:
         if limit is not None:
             limit = "LIMIT %s" % limit
         else:
             limit = ""
+        Log.Debug("Limit is set to %s" % limit)
 
+        lines = []
+        results2 = []
+        selector = "sm.metadata_type"
+        if "Type" in headers:
+            temp_selector = "WHERE "
+        else:
+            temp_selector = "WHERE %s IN %s " % (selector, query_types)
+        if len(headers.keys()) != 0:
+            Log.Debug("We have headers...")
+            selectors = {
+                "Userid": "sm.account_id",
+                "Username": "accounts.name",
+                "Type": "sm.metadata_type"
+            }
+
+            for header_key, value in headers.items():
+                if header_key in selectors:
+                    Log.Debug("Header key %s is present" % header_key)
+                    header_key = selectors[header_key]
+                    lines.append("%s = '%s'" % (header_key, value))
+
+        if bool(lines):
+            Log.Debug("We have lines too...")
+            query_selector = temp_selector + "AND".join(lines)
+        else:
+            query_selector = temp_selector
+
+        query2 = """select sm.account_id, sm.timespan, sm.at, sm.metadata_type, sm.count, sm.duration,
+                                 accounts.name,
+                                 devices.name AS device_name, devices.identifier AS device_id,
+                                 sb.bytes from statistics_media AS sm
+                                 INNER JOIN statistics_bandwidth as sb
+                                     ON sb.at = sm.at AND sb.account_id = sm.account_id AND sb.device_id = sm.device_id
+                                 INNER JOIN accounts
+                                     ON accounts.id = sm.account_id
+                                 INNER JOIN devices
+                                     ON devices.id = sm.device_id
+                                     %s
+                                 ORDER BY sm.at DESC 
+                                 %s;""" % (query_selector, limit)
+
+        Log.Debug("Query1) is '%s'" % query2)
+        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(
+                query2):
+            dictz = {
+                "user_id": user_id,
+                "userName": user_name,
+                "timespan": timespan,
+                "viewedAt": viewed_at,
+                "metaType": meta_type,
+                "count": count,
+                "duration": duration,
+                "deviceName": device_name,
+                "deviceId": device_id,
+                "bytes": bytes
+            }
+            results2.append(dictz)
+        Log.Debug("Query1 completed.")
         lines = []
         query_selector = ""
         if len(headers.keys()) != 0:
@@ -614,9 +683,18 @@ def query_user_stats(headers, limit=1000):
                     header_key = selectors[header_key]
                     lines.append("%s = '%s'" % (header_key, value))
 
+        selector = "mi.metadata_type"
+        if "Type" in headers:
+            temp_selector = "WHERE "
+        else:
+            temp_selector = "WHERE %s IN %s " % (selector, query_types)
+
         if bool(lines):
             Log.Debug("We have lines too...")
-            query_selector = "WHERE " + "AND".join(lines)
+            query_selector = temp_selector + "AND".join(lines)
+        else:
+            query_selector = temp_selector
+
 
         query = """SELECT mi.id AS media_id, 
                     metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
@@ -630,7 +708,7 @@ def query_user_stats(headers, limit=1000):
                 ORDER BY metadata_item_views.viewed_at desc
                 %s;""" % (query_selector, limit)
 
-        Log.Debug("Querys is '%s'" % query)
+        Log.Debug("Query2 is '%s'" % query)
         results = []
         for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(
                 query):
@@ -646,57 +724,7 @@ def query_user_stats(headers, limit=1000):
                 "art": art
             }
             results.append(dictz)
-
-        lines = []
-        results2 = []
-        query_selector = ""
-        if len(headers.keys()) != 0:
-            Log.Debug("We have headers...")
-            selectors = {
-                "Userid": "sm.account_id",
-                "Username": "accounts.name",
-                "Type": "sm.metadata_type"
-            }
-
-            for header_key, value in headers.items():
-                if header_key in selectors:
-                    Log.Debug("Header key %s is present" % header_key)
-                    header_key = selectors[header_key]
-                    lines.append("%s = '%s'" % (header_key, value))
-
-        if bool(lines):
-            Log.Debug("We have lines too...")
-            query_selector = "WHERE " + "AND".join(lines)
-
-        query2 = """select sm.account_id, sm.timespan, sm.at, sm.metadata_type, sm.count, sm.duration,
-                         accounts.name,
-                         devices.name AS device_name, devices.identifier AS device_id,
-                         sb.bytes from statistics_media AS sm
-                         INNER JOIN statistics_bandwidth as sb
-                             ON sb.at = sm.at AND sb.account_id = sm.account_id AND sb.device_id = sm.device_id
-                         INNER JOIN accounts
-                             ON accounts.id = sm.account_id
-                         INNER JOIN devices
-                             ON devices.id = sm.device_id
-                             %s
-                         ORDER BY sm.at DESC 
-                         %s;""" % (query_selector, limit)
-
-        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(
-                query2):
-            dictz = {
-                "user_id": user_id,
-                "userName": user_name,
-                "timespan": timespan,
-                "viewedAt": viewed_at,
-                "metaType": meta_type,
-                "count": count,
-                "duration": duration,
-                "deviceName": device_name,
-                "deviceId": device_id,
-                "bytes": bytes
-            }
-            results2.append(dictz)
+        Log.Debug("Query2 completed")
         close_connection(connection)
         return [results, results2]
     else:
