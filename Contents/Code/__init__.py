@@ -237,7 +237,7 @@ def Library():
                 play_count += record['playCount']
             del record["totalItems"]
             del record["playCount"]
-        ac = AnyContainer({"id": sec_id, "size": item_count}, "Section", "False")
+        ac = AnyContainer({"title": name, "id": sec_id, "size": item_count}, "Section", "False")
         Log.Debug("Creating container1 for %s" % name)
         for record in sections[name]:
             item_type = str(record["type"]).capitalize()
