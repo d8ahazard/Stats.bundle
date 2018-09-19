@@ -496,24 +496,24 @@ def query_tag_stats(selection, limit=1000):
             return False
 
         if selection == "all":
-            fetch_values = "tags.tag, tags.tag_type, mt.metadata_type, mt.user_thumb_url, mt.user_art_url, mt.id, " \
+            fetch_values = "tags.tag, tags.tag_type, mt.metadata_type, mt.id, " \
                            "COUNT(tags.id)"
             tag_selection = "tags.tag_type = 6 OR tags.tag_type = 5 OR tags.tag_type = 4 OR tags.tag_type = 1"
 
         if selection == "actor":
-            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 6"
 
         if selection == "director":
-            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 4"
 
         if selection == "writer":
-            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 5"
 
         if selection == "genre":
-            fetch_values = "tags.tag, mt.user_thumb_url, mt.user_art_url, mt.id, COUNT(tags.id)"
+            fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 5"
 
         query = """SELECT %s
@@ -527,7 +527,7 @@ def query_tag_stats(selection, limit=1000):
                         desc LIMIT %s;""" % (fetch_values, tag_selection, limit)
 
         if selection == "all":
-            for title, tag_type, meta_type, meta_thumb, meta_art, ratingkey, tag_count in cursor.execute(query):
+            for title, tag_type, meta_type, ratingkey, tag_count in cursor.execute(query):
                 tag_types = {
                     1: "genre",
                     4: "director",
@@ -555,20 +555,23 @@ def query_tag_stats(selection, limit=1000):
                     "type": tag_title,
                     "count": tag_count,
                     "metaType": meta_type,
-                    "thumb": meta_thumb,
-                    "art": meta_art,
-                    "ratingKey": ratingkey
+                    "ratingKey": ratingkey,
+                    "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                    "art": "/library/metadata/" + str(ratingkey) + "/art"
                 }
+
+                if meta_type == "episode":
+                    dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
 
                 results.append(dicts)
         else:
-            for tag, thumb, art, ratingkey, count in cursor.execute(query):
+            for tag, ratingkey, count in cursor.execute(query):
                 dicts = {
                     "title": tag,
-                    "thumb": thumb,
-                    "art": art,
+                    "count": count,
                     "ratingKey": ratingkey,
-                    "count": count
+                    "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                    "art": "/library/metadata/" + str(ratingkey) + "/art"
                 }
 
                 results.append(dicts)
@@ -698,7 +701,7 @@ def query_user_stats(headers):
 
         query = """SELECT mi.id AS media_id, 
                     metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
-                    mi.metadata_type, mi.user_thumb_url, mi.user_art_url,
+                    mi.metadata_type,
                     acc.id, acc.name from metadata_item_views
                     INNER JOIN metadata_items AS mi 
                        ON metadata_item_views.title = mi.title
@@ -710,20 +713,24 @@ def query_user_stats(headers):
 
         Log.Debug("Query2 is '%s'" % query)
         results = []
-        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(
+        for ratingkey, title, grandparent_title, viewed_at, meta_type, user_id, user_name in cursor.execute(
                 query):
-            dictz = {
+            dicts = {
                 "user_id": user_id,
                 "userName": user_name,
-                "ratingKey": rating_key,
                 "title": title,
                 "grandparentTitle": grandparent_title,
                 "lastViewed": viewed_at,
                 "type": meta_type,
-                "thumb": thumb,
-                "art": art
+                "ratingKey": ratingkey,
+                "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                "art": "/library/metadata/" + str(ratingkey) + "/art"
             }
-            results.append(dictz)
+
+            if meta_type == "episode":
+                dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
+
+            results.append(dicts)
         Log.Debug("Query2 completed")
         close_connection(connection)
         return [results, results2]
@@ -764,8 +771,6 @@ def query_library_stats(headers):
             SecondSet.play_count,
             SecondSet.rating_key,
             SecondSet.title,
-            SecondSet.thumb,
-            SecondSet.art,
             SecondSet.grandparent_title,
             SecondSet.last_viewed,
             SecondSet.user_name,
@@ -792,8 +797,6 @@ def query_library_stats(headers):
                     miv.title as title,
                     miv.library_section_id,
                     miv.viewed_at as last_viewed,
-                    mi.user_thumb_url as thumb,
-                    mi.user_art_url as art,
                     miv.metadata_type,
                     miv.grandparent_title as grandparent_title,
                     count(miv.metadata_type) as play_count,
@@ -818,7 +821,7 @@ def query_library_stats(headers):
 
         Log.Debug("Querys is '%s'" % query)
         results = []
-        for section, meta_type, item_count, play_count, rating_key, title, thumb, art, \
+        for section, meta_type, item_count, play_count, ratingkey, title, \
             grandparent_title, last_viewed, user_name, user_id, sec_name, sec_type in cursor.execute(
                 query):
 
@@ -828,24 +831,27 @@ def query_library_stats(headers):
                 Log.Debug("Unkown meta type for %s of %s" % (title, meta_type))
                 meta_type = "unknown"
 
-            dictz = {
+            dicts = {
                 "section": section,
                 "totalItems": item_count,
                 "playCount": play_count,
-                "ratingKey": rating_key,
                 "title": title,
                 "grandparentTitle": grandparent_title,
                 "lastViewed": last_viewed,
                 "type": meta_type,
-                "thumb": thumb,
-                "art": art,
                 "userTitle": user_name,
                 "userId": user_id,
                 "sectionType": sec_type,
-                "sectionTitle": sec_name
+                "sectionTitle": sec_name,
+                "ratingKey": ratingkey,
+                "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                "art": "/library/metadata/" + str(ratingkey) + "/art"
             }
 
-            results.append(dictz)
+            if meta_type == "episode":
+                dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
+
+            results.append(dicts)
         close_connection(connection)
         return results
     else:
