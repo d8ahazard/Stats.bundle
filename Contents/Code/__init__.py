@@ -245,23 +245,34 @@ def Library():
         item_count = 0
         play_count = 0
         playable_count = 0
+        last_item = None
+        section_children = []
         for record in sections[name]:
-            del record["sectionType"]
             item_count += record["totalItems"]
+            if record['playCount'] is not None:
+                play_count += record['playCount']
             if record["type"] in ["episode", "track", "movie"]:
                 playable_count = record["totalItems"]
-            if record["playCount"] is not None:
-                play_count += record['playCount']
-            del record["playCount"]
-            if record["lastViewed"] is None:
-                keep = ["totalItems", "type", "section"]
-                to_del = []
-                for value in record:
-                    if value not in keep:
-                        to_del.append(value)
 
-                for value in to_del:
-                    del(record[value])
+            item_type = str(record["type"]).capitalize()
+            record_data = {
+                "totalItems": record["totalItems"]
+            }
+            vc = AnyContainer(record_data, item_type, False)
+
+            if record["lastViewed"] is not None:
+                last_item = {
+                    "title": record['title'],
+                    "grandparentTitle": record['grandparentTitle'],
+                    "art": record['art'],
+                    "thumb": record['thumb'],
+                    "ratingKey": record['ratingKey'],
+                    "viewedAt": record['lastViewed']
+                }
+                li = AnyContainer(last_item, "lastViewed", False)
+                vc.add(li)
+
+            section_children.append(vc)
 
         section_data = {
             "title": name,
@@ -272,13 +283,9 @@ def Library():
             "type": sec_type
         }
         ac = AnyContainer(section_data, "Section", "False")
-        Log.Debug("Creating container1 for %s" % name)
-        for record in sections[name]:
-            item_type = str(record["type"]).capitalize()
-            del record["type"]
-            del record["section"]
-            vc = AnyContainer(record, item_type, False)
-            ac.add(vc)
+        for child in section_children:
+            ac.add(child)
+
         mc.add(ac)
 
     return mc
