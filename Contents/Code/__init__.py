@@ -346,7 +346,7 @@ def User():
             Log.Debug("Creating container1 for %s" % name)
             i = 0
             for record in users1[name]:
-                if i > 10:
+                if i >= 25:
                     break
                 del (record["user_id"])
                 ac.add(ViewContainer(record))
@@ -358,7 +358,7 @@ def User():
                 ac = AnyContainer({"totalItems": len(users2[name])}, "Stats")
                 i = 0
                 for record in users2[name]:
-                    if i > 10:
+                    if i >= 25:
                         break
                     del (record["user_id"])
                     ac.add(ViewContainer(record))
