@@ -739,9 +739,9 @@ def query_library_stats(headers):
                     count(mi.metadata_type) as item_count
                 FROM metadata_items as mi
                 INNER JOIN library_sections as ls
-                    ON library_section_id = ls.id
+                    ON mi.library_section_id = ls.id
                 WHERE library_section_id is NOT NULL
-                GROUP BY library_section_id
+                GROUP BY library_section_id, metadata_type
             ) as FirstSet
         LEFT JOIN
             (
@@ -771,7 +771,7 @@ def query_library_stats(headers):
                 GROUP BY miv.metadata_type
             ) as SecondSet
         on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
-        GROUP BY FirstSet.metadata_type
+        GROUP BY FirstSet.library_section_id, FirstSet.metadata_type
         ORDER BY FirstSet.library_section_id;"""
 
         Log.Debug("Querys is '%s'" % query)
