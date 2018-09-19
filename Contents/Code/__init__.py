@@ -218,10 +218,32 @@ def Library():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
     Log.Debug("Here's where we fetch some library stats.")
+    sections = {}
     records = query_library_stats(headers)
     for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
+        section = record["sectionTitle"]
+        if section not in sections:
+            sections[section] = []
+        del (record["sectionTitle"])
+        sections[section].append(dict(record))
+
+    for name in sections:
+        sec_id = sections[name][0]["section"]
+        item_count = 0
+        play_count = 0
+        for record in sections[name]:
+            item_count += record["totalItems"]
+            if record["playCount"] is not None:
+                play_count += record['playCount']
+            del record["totalItems"]
+            del record["playCount"]
+        ac = AnyContainer({"id": sec_id, "size": item_count}, "Section", "False")
+        Log.Debug("Creating container1 for %s" % name)
+        for record in sections[name]:
+            item_type = str(record["type"]).capitalize()
+            vc = AnyContainer(record, "LastItem", False)
+            ac.add(vc)
+        mc.add(ac)
 
     return mc
 
@@ -240,23 +262,19 @@ def User():
             user_name = record["userName"]
             if user_name not in users1:
                 users1[user_name] = []
-            temp_dict = users1[user_name]
             del (record["userName"])
-            temp_dict.append(dict(record))
-            users1[user_name] = temp_dict
+            users1[user_name].append(dict(record))
 
         for record in records[1]:
             user_name = record["userName"]
             if user_name not in users2:
                 users2[user_name] = []
-            temp_dict = users2[user_name]
             del (record["userName"])
-            temp_dict.append(dict(record))
-            users2[user_name] = temp_dict
+            users2[user_name].append(dict(record))
 
         for name in users1:
-            id = users1[name][0]["user_id"]
-            uc = UserContainer({"name": name, "id": id})
+            user_id = users1[name][0]["user_id"]
+            uc = UserContainer({"name": name, "id": user_id})
             ac = AnyContainer(None, "Media")
             Log.Debug("Creating container1 for %s" % name)
             for record in users1[name]:
@@ -646,11 +664,19 @@ def query_library_stats(headers):
         limit = None
 
     meta_types = {
-        "movie": 1,
-        "show": 2,
-        "episode": 4,
-        "album": 9,
-        "track": 10
+        1: "movie",
+        2: "show",
+        4: "episode",
+        9: "album",
+        10: "track",
+        18: "playlist"
+    }
+
+    section_ids = {
+        1: "Movies",
+        2: "Shows",
+        3: "Music",
+        4: "Photos"
     }
 
     if "Type" in headers:
@@ -661,13 +687,7 @@ def query_library_stats(headers):
 
     cursor = fetch_cursor()
     if cursor is not None:
-        if limit is not None:
-            limit = "LIMIT %s" % limit
-        else:
-            limit = ""
-
         lines = []
-        query_selector = ""
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
             selectors = {
@@ -685,35 +705,54 @@ def query_library_stats(headers):
 
         if bool(lines):
             Log.Debug("We have lines too...")
-            query_selector = "WHERE " + "AND".join(lines)
 
-        query = """SELECT mi.id AS media_id, 
-                    metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
-                    mi.metadata_type, mi.user_thumb_url, mi.user_art_url,
-                    acc.id, acc.name from metadata_item_views
-                    INNER JOIN metadata_items AS mi 
-                       ON metadata_item_views.title = mi.title
-                    INNER JOIN accounts as acc
-                       ON acc.id = metadata_item_views.account_id
-                %s
-                ORDER BY metadata_item_views.viewed_at desc
-                %s;""" % (query_selector, limit)
+        query = """select
+            FirstSet.library_section_id,
+            FirstSet.metadata_type,    
+            FirstSet.item_count,
+            SecondSet.play_count,
+            FirstSet.id as rating_key,
+            FirstSet.title,
+            FirstSet.thumb,
+            FirstSet.art,
+            SecondSet.grandparent_title,
+            SecondSet.last_viewed
+        from 
+        (
+            SELECT library_section_id, metadata_type, id, title, user_thumb_url as thumb, user_art_url as art, count(metadata_type) as item_count FROM metadata_items WHERE library_section_id is NOT NULL GROUP BY metadata_type
+        ) as FirstSet
+        left join
+        (
+            SELECT library_section_id, metadata_type, grandparent_title, count(metadata_type) as play_count, max(viewed_at) as last_viewed FROM metadata_item_views WHERE library_section_id is NOT NULL GROUP BY metadata_type
+        ) as SecondSet
+        on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
+        GROUP BY FirstSet.metadata_type
+        ORDER BY FirstSet.library_section_id;"""
 
         Log.Debug("Querys is '%s'" % query)
         results = []
-        for rating_key, title, grandparent_title, viewed_at, meta_type, thumb, art, user_id, user_name in cursor.execute(
+        for section, meta_type, item_count, play_count, rating_key, title, thumb, art, grandparent_title, last_viewed in cursor.execute(
                 query):
+
+            if meta_type in meta_types:
+                meta_type = meta_types[meta_type]
+
             dictz = {
-                "user_id": user_id,
-                "userName": user_name,
+                "section": section,
+                "totalItems": item_count,
+                "playCount": play_count,
                 "ratingKey": rating_key,
                 "title": title,
                 "grandparentTitle": grandparent_title,
-                "lastViewed": viewed_at,
+                "lastViewed": last_viewed,
                 "type": meta_type,
                 "thumb": thumb,
                 "art": art
             }
+
+            if section in section_ids:
+                dictz["sectionTitle"] = section_ids[section]
+
             results.append(dictz)
         return results
     else:
@@ -725,7 +764,7 @@ def fetch_cursor():
 
     if os.environ["Loaded"]:
         import apsw
-        Log.Debug("Shit, we got the library!")
+        Log.Debug("Shit, we got the librarys!")
         connection = apsw.Connection(os.environ['LIBRARY_DB'])
         cursor = connection.cursor()
     return cursor
