@@ -235,13 +235,30 @@ def Library():
             item_count += record["totalItems"]
             if record["playCount"] is not None:
                 play_count += record['playCount']
-            del record["totalItems"]
             del record["playCount"]
-        ac = AnyContainer({"title": name, "id": sec_id, "size": item_count}, "Section", "False")
+            if record["lastViewed"] is None:
+                keep = ["totalItems", "type", "section"]
+                to_del = []
+                for value in record:
+                    if value not in keep:
+                        to_del.append(value)
+
+                for value in to_del:
+                    del(record[value])
+
+        section_data = {
+            "title": name,
+            "id": sec_id,
+            "size": item_count,
+            "playCount": play_count
+        }
+        ac = AnyContainer(section_data, "Section", "False")
         Log.Debug("Creating container1 for %s" % name)
         for record in sections[name]:
             item_type = str(record["type"]).capitalize()
-            vc = AnyContainer(record, "LastItem", False)
+            del record["type"]
+            del record["section"]
+            vc = AnyContainer(record, item_type, False)
             ac.add(vc)
         mc.add(ac)
 
@@ -667,8 +684,11 @@ def query_library_stats(headers):
         1: "movie",
         2: "show",
         4: "episode",
+        8: "artist",
         9: "album",
         10: "track",
+        12: "trailer",
+        15: "playlist",
         18: "playlist"
     }
 
@@ -707,27 +727,47 @@ def query_library_stats(headers):
             Log.Debug("We have lines too...")
 
         query = """select
-            FirstSet.library_section_id,
-            FirstSet.metadata_type,    
-            FirstSet.item_count,
-            SecondSet.play_count,
-            FirstSet.id as rating_key,
-            FirstSet.title,
-            FirstSet.thumb,
-            FirstSet.art,
-            SecondSet.grandparent_title,
-            SecondSet.last_viewed
-        from 
-        (
-            SELECT library_section_id, metadata_type, id, title, user_thumb_url as thumb, user_art_url as art, count(metadata_type) as item_count FROM metadata_items WHERE library_section_id is NOT NULL GROUP BY metadata_type
-        ) as FirstSet
-        left join
-        (
-            SELECT library_section_id, metadata_type, grandparent_title, count(metadata_type) as play_count, max(viewed_at) as last_viewed FROM metadata_item_views WHERE library_section_id is NOT NULL GROUP BY metadata_type
-        ) as SecondSet
-        on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
-        GROUP BY FirstSet.metadata_type
-        ORDER BY FirstSet.library_section_id;"""
+                        FirstSet.library_section_id,
+                        FirstSet.metadata_type,    
+                        FirstSet.item_count,
+                        SecondSet.play_count,
+                        SecondSet.rating_key,
+                        SecondSet.title,
+                        SecondSet.thumb,
+                        SecondSet.art,
+                        SecondSet.grandparent_title,
+                        SecondSet.last_viewed
+                    from 
+                        (
+                            SELECT library_section_id, metadata_type, count(metadata_type) as item_count FROM metadata_items WHERE library_section_id is NOT NULL GROUP BY metadata_type
+                        ) as FirstSet
+                    LEFT JOIN
+                        (
+                            SELECT 
+                                mi.id as rating_key,
+                                miv.title as title,
+                                miv.library_section_id as library_section_id,
+                                miv.viewed_at as last_viewed,
+                                mi.user_thumb_url as thumb,
+                                mi.user_art_url as art,
+                                miv.metadata_type,
+                                miv.grandparent_title as grandparent_title,
+                                count(miv.metadata_type) as play_count,
+                                max(viewed_at) as last_viewed 
+                            FROM
+                                metadata_item_views as miv
+                            INNER JOIN
+                                metadata_items as mi
+                            ON
+                                mi.title = miv.title
+                            AND
+                                mi.metadata_type = miv.metadata_type             
+                            WHERE mi.library_section_id is NOT NULL 
+                            GROUP BY miv.metadata_type
+                        ) as SecondSet
+                    on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
+                    GROUP BY FirstSet.metadata_type
+                    ORDER BY FirstSet.library_section_id;"""
 
         Log.Debug("Querys is '%s'" % query)
         results = []
@@ -736,6 +776,9 @@ def query_library_stats(headers):
 
             if meta_type in meta_types:
                 meta_type = meta_types[meta_type]
+            else:
+                Log.Debug("Unkown meta type for %s of %s" % (title, meta_type))
+                meta_type = "unknown"
 
             dictz = {
                 "section": section,
