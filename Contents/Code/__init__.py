@@ -231,7 +231,7 @@ def Library():
         Log.Debug("Looping through section '%s'" % name)
         sec_id = sections[name][0]["section"]
         sec_type = sections[name][0]["sectionType"]
-        section_ids = {
+        section_types = {
             1: "movie",
             2: "show",
             3: "music",
@@ -239,8 +239,8 @@ def Library():
             8: "music",
             13: "photo"
         }
-        if sec_type in section_ids:
-            sec_type = section_ids[sec_type]
+        if sec_type in section_types:
+            sec_type = section_types[sec_type]
 
         item_count = 0
         play_count = 0
@@ -713,91 +713,66 @@ def query_library_stats(headers):
         18: "collection"
     }
 
-    if "Type" in headers:
-        if headers["Type"] in meta_types:
-            headers['Type'] = meta_types[headers['Type']]
-
-    Log.Debug("Limit is set to %s" % limit)
-
     cursor = fetch_cursor()
     if cursor is not None:
-        lines = []
-        if len(headers.keys()) != 0:
-            Log.Debug("We have headers...")
-            selectors = {
-                "Userid": "acc.id",
-                "Username": "acc.name",
-                "Type": "mi.metadata_type",
-                "Title": "mi.title"
-            }
-
-            for header_key, value in headers.items():
-                if header_key in selectors:
-                    Log.Debug("Header key %s is present" % header_key)
-                    header_key = selectors[header_key]
-                    lines.append("%s = '%s'" % (header_key, value))
-
-        if bool(lines):
-            Log.Debug("We have lines too...")
-
         query = """select
-    FirstSet.library_section_id,
-    FirstSet.metadata_type,    
-    FirstSet.item_count,
-    SecondSet.play_count,
-    SecondSet.rating_key,
-    SecondSet.title,
-    SecondSet.thumb,
-    SecondSet.art,
-    SecondSet.grandparent_title,
-    SecondSet.last_viewed,
-    SecondSet.user_name,
-    SecondSet.user_id,
-    FirstSet.section_name,
-    FirstSet.section_type
-from 
-    (
-        SELECT
-            mi.library_section_id,
-            mi.metadata_type,
-            ls.name as section_name, ls.section_type,
-            count(mi.metadata_type) as item_count
-        FROM metadata_items as mi
-        INNER JOIN library_sections as ls
-            ON library_section_id = ls.id
-        WHERE library_section_id is NOT NULL
-        GROUP BY metadata_type
-    ) as FirstSet
-LEFT JOIN
-    (
-        SELECT 
-            mi.id as rating_key,
-            miv.title as title,
-            miv.library_section_id,
-            miv.viewed_at as last_viewed,
-            mi.user_thumb_url as thumb,
-            mi.user_art_url as art,
-            miv.metadata_type,
-            miv.grandparent_title as grandparent_title,
-            count(miv.metadata_type) as play_count,
-            accounts.name as user_name, accounts.id as user_id,
-            ls.name as section_name, ls.section_type as section_type,
-            max(viewed_at) as last_viewed 
-        FROM metadata_item_views as miv
-        INNER JOIN library_sections as ls
-            ON miv.library_section_id = ls.id
-        INNER JOIN metadata_items as mi
-            ON mi.title = miv.title
-        INNER JOIN accounts
-            ON miv.account_id = accounts.id
-        AND
-            mi.metadata_type = miv.metadata_type             
-        WHERE mi.library_section_id is NOT NULL 
-        GROUP BY miv.metadata_type
-    ) as SecondSet
-on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
-GROUP BY FirstSet.metadata_type
-ORDER BY FirstSet.library_section_id;"""
+            FirstSet.library_section_id,
+            FirstSet.metadata_type,    
+            FirstSet.item_count,
+            SecondSet.play_count,
+            SecondSet.rating_key,
+            SecondSet.title,
+            SecondSet.thumb,
+            SecondSet.art,
+            SecondSet.grandparent_title,
+            SecondSet.last_viewed,
+            SecondSet.user_name,
+            SecondSet.user_id,
+            FirstSet.section_name,
+            FirstSet.section_type
+        from 
+            (
+                SELECT
+                    mi.library_section_id,
+                    mi.metadata_type,
+                    ls.name as section_name, ls.section_type,
+                    count(mi.metadata_type) as item_count
+                FROM metadata_items as mi
+                INNER JOIN library_sections as ls
+                    ON library_section_id = ls.id
+                WHERE library_section_id is NOT NULL
+                GROUP BY library_section_id
+            ) as FirstSet
+        LEFT JOIN
+            (
+                SELECT 
+                    mi.id as rating_key,
+                    miv.title as title,
+                    miv.library_section_id,
+                    miv.viewed_at as last_viewed,
+                    mi.user_thumb_url as thumb,
+                    mi.user_art_url as art,
+                    miv.metadata_type,
+                    miv.grandparent_title as grandparent_title,
+                    count(miv.metadata_type) as play_count,
+                    accounts.name as user_name, accounts.id as user_id,
+                    ls.name as section_name, ls.section_type as section_type,
+                    max(viewed_at) as last_viewed 
+                FROM metadata_item_views as miv
+                INNER JOIN library_sections as ls
+                    ON miv.library_section_id = ls.id
+                INNER JOIN metadata_items as mi
+                    ON mi.title = miv.title
+                INNER JOIN accounts
+                    ON miv.account_id = accounts.id
+                AND
+                    mi.metadata_type = miv.metadata_type             
+                WHERE mi.library_section_id is NOT NULL 
+                GROUP BY miv.metadata_type
+            ) as SecondSet
+        on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
+        GROUP BY FirstSet.metadata_type
+        ORDER BY FirstSet.library_section_id;"""
 
         Log.Debug("Querys is '%s'" % query)
         results = []
