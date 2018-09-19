@@ -267,7 +267,9 @@ def Library():
                     "art": record['art'],
                     "thumb": record['thumb'],
                     "ratingKey": record['ratingKey'],
-                    "viewedAt": record['lastViewed']
+                    "viewedAt": record['lastViewed'],
+                    "userTitle": record['userTitle'],
+                    "userId": record['userId']
                 }
                 li = AnyContainer(last_item, "lastViewed", False)
                 vc.add(li)
