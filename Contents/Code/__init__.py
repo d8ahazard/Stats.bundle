@@ -688,10 +688,10 @@ def query_library_stats(headers):
         8: "artist",
         9: "album",
         10: "track",
-        12: "trailer",
+        12: "extra",
         13: "photo",
         15: "playlist",
-        18: "playlist"
+        18: "collection"
     }
 
     section_ids = {
@@ -738,7 +738,9 @@ def query_library_stats(headers):
                         SecondSet.thumb,
                         SecondSet.art,
                         SecondSet.grandparent_title,
-                        SecondSet.last_viewed
+                        SecondSet.last_viewed,
+                        SecondSet.user_name,
+                        SecondSet.user_id
                     from 
                         (
                             SELECT library_section_id, metadata_type, count(metadata_type) as item_count FROM metadata_items WHERE library_section_id is NOT NULL GROUP BY metadata_type
@@ -755,6 +757,7 @@ def query_library_stats(headers):
                                 miv.metadata_type,
                                 miv.grandparent_title as grandparent_title,
                                 count(miv.metadata_type) as play_count,
+                                accounts.name as user_name, accounts.id as user_id,
                                 max(viewed_at) as last_viewed 
                             FROM
                                 metadata_item_views as miv
@@ -762,6 +765,9 @@ def query_library_stats(headers):
                                 metadata_items as mi
                             ON
                                 mi.title = miv.title
+                            INNER JOIN
+                                accounts
+                            ON miv.account_id = accounts.id
                             AND
                                 mi.metadata_type = miv.metadata_type             
                             WHERE mi.library_section_id is NOT NULL 
@@ -773,7 +779,8 @@ def query_library_stats(headers):
 
         Log.Debug("Querys is '%s'" % query)
         results = []
-        for section, meta_type, item_count, play_count, rating_key, title, thumb, art, grandparent_title, last_viewed in cursor.execute(
+        for section, meta_type, item_count, play_count, rating_key, title, thumb, art, \
+            grandparent_title, last_viewed, user_name, user_id in cursor.execute(
                 query):
 
             if meta_type in meta_types:
@@ -792,7 +799,9 @@ def query_library_stats(headers):
                 "lastViewed": last_viewed,
                 "type": meta_type,
                 "thumb": thumb,
-                "art": art
+                "art": art,
+                "userTitle": user_name,
+                "userId": user_id
             }
 
             if section in section_ids:
