@@ -689,6 +689,7 @@ def query_library_stats(headers):
         9: "album",
         10: "track",
         12: "trailer",
+        13: "photo",
         15: "playlist",
         18: "playlist"
     }
