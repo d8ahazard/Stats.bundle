@@ -683,6 +683,7 @@ def query_library_stats(headers):
     meta_types = {
         1: "movie",
         2: "show",
+        3: "season",
         4: "episode",
         8: "artist",
         9: "album",
