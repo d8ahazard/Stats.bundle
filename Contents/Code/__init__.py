@@ -212,6 +212,25 @@ def Writer():
     return mc
 
 
+@route(APP + '/genre')
+@route(PREFIX2 + '/stats/genre')
+def Genre():
+    mc = MediaContainer()
+    headers = sort_headers(["Limit", "Type"])
+    if "Limit" in headers:
+        limit = headers["Limit"]
+    else:
+        limit = 100
+
+    Log.Debug("Here's where we fetch some statsssss.")
+    records = query_tag_stats("genre", limit)
+    for record in records:
+        sc = StatContainer(record)
+        mc.add(sc)
+
+    return mc
+
+
 @route(APP + '/library')
 @route(PREFIX2 + '/stats/library')
 def Library():
@@ -299,7 +318,7 @@ def User():
     mc = MediaContainer()
     headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title"])
 
-    records = query_media_stats(headers)
+    records = query_user_stats(headers)
     if records is not None:
         users1 = {}
         users2 = {}
@@ -337,25 +356,6 @@ def User():
             mc.add(uc)
 
     Log.Debug("Still alive")
-
-    return mc
-
-
-@route(APP + '/genre')
-@route(PREFIX2 + '/stats/genre')
-def Genre():
-    mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
-    if "Limit" in headers:
-        limit = headers["Limit"]
-    else:
-        limit = 100
-
-    Log.Debug("Here's where we fetch some statsssss.")
-    records = query_tag_stats("genre", limit)
-    for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
 
     return mc
 
@@ -470,7 +470,7 @@ def sort_headers(header_list, strict=False):
         return returns
 
 
-def query_tag_stats(selection, limit=100):
+def query_tag_stats(selection, limit=1000):
     Log.Debug("Limit is set to %s" % limit)
 
     conn = fetch_cursor()
@@ -568,12 +568,10 @@ def query_tag_stats(selection, limit=100):
         return None
 
 
-def query_media_stats(headers):
+def query_user_stats(headers, limit=1000):
     if "Limit" in headers:
         limit = headers["Limit"]
         del headers["Limit"]
-    else:
-        limit = None
 
     meta_types = {
         "movie": 1,
@@ -592,6 +590,7 @@ def query_media_stats(headers):
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
+
     if cursor is not None:
         if limit is not None:
             limit = "LIMIT %s" % limit
