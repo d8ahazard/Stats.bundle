@@ -473,7 +473,9 @@ def sort_headers(header_list, strict=False):
 def query_tag_stats(selection, limit=100):
     Log.Debug("Limit is set to %s" % limit)
 
-    cursor = fetch_cursor()
+    conn = fetch_cursor()
+    cursor = conn[0]
+    connection = conn[1]
     if cursor is not None:
         results = []
 
@@ -559,7 +561,7 @@ def query_tag_stats(selection, limit=100):
                 }
 
                 results.append(dicts)
-
+        close_connection(connection)
         return results
     else:
         Log.Error("DB Connection error!")
@@ -587,7 +589,9 @@ def query_media_stats(headers):
 
     Log.Debug("Limit is set to %s" % limit)
 
-    cursor = fetch_cursor()
+    conn = fetch_cursor()
+    cursor = conn[0]
+    connection = conn[1]
     if cursor is not None:
         if limit is not None:
             limit = "LIMIT %s" % limit
@@ -694,7 +698,7 @@ def query_media_stats(headers):
                 "bytes": bytes
             }
             results2.append(dictz)
-
+        close_connection(connection)
         return [results, results2]
     else:
         Log.Error("DB Connection error!")
@@ -722,7 +726,9 @@ def query_library_stats(headers):
         18: "collection"
     }
 
-    cursor = fetch_cursor()
+    conn = fetch_cursor()
+    cursor = conn[0]
+    connection = conn[1]
     if cursor is not None:
         query = """select
             FirstSet.library_section_id,
@@ -813,6 +819,7 @@ def query_library_stats(headers):
             }
 
             results.append(dictz)
+        close_connection(connection)
         return results
     else:
         Log.Error("Error connecting to DB!")
@@ -820,13 +827,21 @@ def query_library_stats(headers):
 
 def fetch_cursor():
     cursor = None
-
+    connection = None
     if os.environ["Loaded"]:
         import apsw
         Log.Debug("Shit, we got the librarys!")
         connection = apsw.Connection(os.environ['LIBRARY_DB'])
         cursor = connection.cursor()
-    return cursor
+    return [cursor, connection]
+
+
+def close_connection(connection):
+    if connection is not None:
+        Log.Debug("Closing connection..")
+        connection.close()
+    else:
+        Log.Debug("No connection to close!")
 
 
 def vcr_ver():
