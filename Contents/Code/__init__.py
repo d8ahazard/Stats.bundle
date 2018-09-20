@@ -137,8 +137,8 @@ def ValidatePrefs():
     return
 
 
-@route(APP + '/tags/all')
-@route(PREFIX2 + '/stats/tags/all')
+@route(APP + '/tags')
+@route(PREFIX2 + '/stats/tags')
 def All():
     mc = build_tag_container("all")
     return mc
