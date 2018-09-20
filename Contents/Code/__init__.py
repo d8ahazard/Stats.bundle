@@ -85,8 +85,6 @@ def Start():
     else:
         os.environ["Loaded"] = "False"
 
-    get_entitlements()
-
 
 @handler(PREFIX, NAME)
 @handler(PREFIX2, NAME)
@@ -142,99 +140,35 @@ def ValidatePrefs():
 @route(APP + '/tags/all')
 @route(PREFIX2 + '/stats/tags/all')
 def All():
-    mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
-    if "Limit" in headers:
-        limit = headers["Limit"]
-    else:
-        limit = 100
-
-    Log.Debug("Here's where we fetch some stats.")
-    records = query_tag_stats("all", limit)
-    if records is not None:
-        for record in records:
-            sc = StatContainer(record)
-            mc.add(sc)
-
+    mc = build_tag_container("all")
     return mc
 
 
 @route(APP + '/tags/actor')
 @route(PREFIX2 + '/stats/tags/actor')
 def Actor():
-    mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
-    if "Limit" in headers:
-        limit = headers["Limit"]
-    else:
-        limit = 100
-
-    Log.Debug("Here's where we fetch some stats.")
-    records = query_tag_stats("actor", limit)
-    if records is not None:
-        for record in records:
-            sc = StatContainer(record)
-            mc.add(sc)
-
+    mc = build_tag_container("actor")
     return mc
 
 
 @route(APP + '/tags/director')
 @route(PREFIX2 + '/stats/tags/director')
 def Director():
-    mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
-    if "Limit" in headers:
-        limit = headers["Limit"]
-    else:
-        limit = 100
-
-    Log.Debug("Here's where we fetch some stats.")
-    records = query_tag_stats("director", limit)
-    if records is not None:
-        for record in records:
-            sc = StatContainer(record)
-            mc.add(sc)
-
+    mc = build_tag_container("director")
     return mc
 
 
 @route(APP + '/tags/writer')
 @route(PREFIX2 + '/stats/tags/writer')
 def Writer():
-    mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
-    if "Limit" in headers:
-        limit = headers["Limit"]
-    else:
-        limit = 100
-
-    Log.Debug("Here's where we fetch some stats.")
-    records = query_tag_stats("writer", limit)
-    if records is not None:
-        for record in records:
-            sc = StatContainer(record)
-            mc.add(sc)
-
+    mc = build_tag_container("writer")
     return mc
 
 
 @route(APP + '/tags/genre')
 @route(PREFIX2 + '/stats/tags/genre')
 def Genre():
-    mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
-    if "Limit" in headers:
-        limit = headers["Limit"]
-    else:
-        limit = 100
-
-    Log.Debug("Here's where we fetch some statsssss.")
-    records = query_tag_stats("genre", limit)
-    for record in records:
-        sc = StatContainer(record)
-        mc.add(sc)
-
+    mc = build_tag_container("genre")
     return mc
 
 
@@ -242,7 +176,7 @@ def Genre():
 @route(PREFIX2 + '/stats/library')
 def Library():
     mc = MediaContainer()
-    headers = sort_headers(["Limit", "Type"])
+    headers = sort_headers(["Container-Size", "Type"])
     Log.Debug("Here's where we fetch some library stats.")
     sections = {}
     records = query_library_stats(headers)
@@ -322,8 +256,9 @@ def Library():
 @route(PREFIX2 + '/stats/user')
 def User():
     mc = MediaContainer()
-    headers = sort_headers(["Type", "Userid", "Username", "Limit", "Device", "Title"])
-
+    headers = sort_headers(["Type", "Userid", "Username", "Container-start", "Container-Size", "Device", "Title"])
+    container_size = headers.get("Container-Size") or 20
+    container_start = headers.get("Container-Start") or 0
     records = query_user_stats(headers)
     if records is not None:
         users1 = {}
@@ -351,11 +286,13 @@ def User():
             ac = AnyContainer({"totalPlays": len(users1[name])}, "Media")
             Log.Debug("Creating container1 for %s" % name)
             i = 0
+            container_max = int(container_start) + int(container_size)
             for record in users1[name]:
-                if i >= 25:
+                if i >= container_max:
                     break
-                del (record["user_id"])
-                ac.add(ViewContainer(record))
+                if i >= container_start:
+                    del (record["user_id"])
+                    ac.add(ViewContainer(record))
                 i += 1
 
             uc.add(ac)
@@ -364,10 +301,11 @@ def User():
                 ac = AnyContainer({"totalItems": len(users2[name])}, "Stats")
                 i = 0
                 for record in users2[name]:
-                    if i >= 25:
+                    if i >= container_max:
                         break
-                    del (record["user_id"])
-                    ac.add(ViewContainer(record))
+                    if i >= container_start:
+                        del (record["user_id"])
+                        ac.add(ViewContainer(record))
                     i += 1
             uc.add(ac)
             mc.add(uc)
@@ -487,12 +425,43 @@ def sort_headers(header_list, strict=False):
         return returns
 
 
-def query_tag_stats(selection, limit=1000):
-    Log.Debug("Limit is set to %s" % limit)
+def build_tag_container(tag_type):
+    selection = tag_type
+    headers = sort_headers(["Container-Start", "Container-Size"])
+    records = query_tag_stats(selection, headers)
+    mc = MediaContainer()
+    if records is not None:
+        for record in records:
+            sc = StatContainer(record)
+            mc.add(sc)
+
+    return mc
+
+
+def query_tag_stats(selection, headers):
+    container_size = int(headers.get("Container-Size") or 20)
+    container_start = int(headers.get("Container-Start") or 0)
+    Log.Debug("Container size is set to %s, start to %s" % (container_size, container_start))
     entitlements = get_entitlements()
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
+
+    tag_types = {
+        1: "genre",
+        4: "director",
+        5: "writer",
+        6: "actor"
+    }
+
+    meta_types = {
+        1: "movie",
+        2: "show",
+        4: "episode",
+        9: "album",
+        10: "track"
+    }
+
     if cursor is not None:
         results = []
 
@@ -532,57 +501,58 @@ def query_tag_stats(selection, limit=1000):
                         WHERE %s
                         GROUP BY tags.tag,tags.tag_type
                         ORDER BY Total
-                        desc LIMIT %s;""" % (fetch_values, tag_selection, limit)
-
+                        desc;""" % (fetch_values, tag_selection)
+        i = 0
+        container_max = int(container_start) + int(container_size)
+        Log.Debug("Container max set to %s" % container_max)
         if selection == "all":
             for title, tag_type, meta_type, ratingkey, tag_count in cursor.execute(query):
-                tag_types = {
-                    1: "genre",
-                    4: "director",
-                    5: "writer",
-                    6: "actor"
-                }
+                if i >= container_max:
+                    break
+                if i >= container_start:
+                    if tag_type in tag_types:
+                        tag_title = tag_types[tag_type]
+                    else:
+                        tag_title = "unknown"
 
-                if tag_type in tag_types:
-                    tag_title = tag_types[tag_type]
+                    if meta_type in meta_types:
+                        meta_type = meta_types[meta_type]
+
+                    dicts = {
+                        "title": title,
+                        "type": tag_title,
+                        "totalItems": tag_count,
+                        "metaType": meta_type,
+                        "ratingKey": ratingkey,
+                        "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                        "art": "/library/metadata/" + str(ratingkey) + "/art"
+                    }
+
+                    if meta_type == "episode":
+                        dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
+                    Log.Debug("Appending record %s" % i)
+                    results.append(dicts)
                 else:
-                    tag_title = "unknown"
+                    Log.Debug("Skipping record %s outside of requested range" % i)
 
-                meta_types = {
-                    1: "movie",
-                    2: "show",
-                    4: "episode",
-                    9: "album",
-                    10: "track"
-                }
-                if meta_type in meta_types:
-                    meta_type = meta_types[meta_type]
-
-                dicts = {
-                    "title": title,
-                    "type": tag_title,
-                    "totalItems": tag_count,
-                    "metaType": meta_type,
-                    "ratingKey": ratingkey,
-                    "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
-                    "art": "/library/metadata/" + str(ratingkey) + "/art"
-                }
-
-                if meta_type == "episode":
-                    dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
-
-                results.append(dicts)
+                i += 1
         else:
             for tag, ratingkey, count in cursor.execute(query):
-                dicts = {
-                    "title": tag,
-                    "totalItems": count,
-                    "ratingKey": ratingkey,
-                    "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
-                    "art": "/library/metadata/" + str(ratingkey) + "/art"
-                }
-
-                results.append(dicts)
+                if i >= container_max:
+                    break
+                if i < container_start:
+                    Log.Debug("Count %s is less than start %s, skipping..." % (i, container_start))
+                else:
+                    Log.Debug("Appending record %s" % i)
+                    dicts = {
+                        "title": tag,
+                        "totalItems": count,
+                        "ratingKey": ratingkey,
+                        "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                        "art": "/library/metadata/" + str(ratingkey) + "/art"
+                    }
+                    results.append(dicts)
+                i += 1
         close_connection(connection)
         return results
     else:
@@ -591,12 +561,8 @@ def query_tag_stats(selection, limit=1000):
 
 
 def query_user_stats(headers):
-    if "Limit" in headers:
-        limit = headers["Limit"]
-        del headers["Limit"]
-    else:
-        limit = None
-
+    container_start = int(headers.get("Container-Start") or 0)
+    container_size = int(headers.get("Container-Size") or 20)
     meta_types = {
         "movie": 1,
         "show": 2,
@@ -611,22 +577,14 @@ def query_user_stats(headers):
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
-    query_types = "(1, 4, 10)"
+    query_types = headers.get("Type") or "1, 4, 6"
+    query_types = "(%s)" % query_types
     if cursor is not None:
         entitlements = get_entitlements()
-        if limit is not None:
-            limit = "LIMIT %s" % limit
-        else:
-            limit = ""
-        Log.Debug("Limit is set to %s" % limit)
-
         lines = []
         results2 = []
-        selector = "sm.metadata_type"
-        if "Type" in headers:
-            temp_selector = "WHERE "
-        else:
-            temp_selector = "WHERE %s IN %s " % (selector, query_types)
+        temp_selector = "WHERE m.metadata_type IN %s" % query_types
+
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
             selectors = {
@@ -643,7 +601,7 @@ def query_user_stats(headers):
 
         if bool(lines):
             Log.Debug("We have lines too...")
-            query_selector = temp_selector + "AND".join(lines)
+            query_selector = temp_selector + " AND " + "AND".join(lines)
         else:
             query_selector = temp_selector
 
@@ -660,53 +618,57 @@ def query_user_stats(headers):
                                  INNER JOIN devices
                                      ON devices.id = sm.device_id
                                      %s
-                                 ORDER BY sm.at DESC 
-                                 %s;""" % (query_selector, limit)
+                                 ORDER BY sm.at DESC;""" % query_selector
 
         Log.Debug("Query1) is '%s'" % query2)
-        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(
+        container_max = container_start + container_size
+        i = 0
+        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, data_bytes in cursor.execute(
                 query2):
-            last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+            if i >= container_max:
+                break
+            if i >= container_start:
+                last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
-            dictz = {
-                "user_id": user_id,
-                "userName": user_name,
-                "timespan": timespan,
-                "lastViewedAt": last_viewed,
-                "metaType": meta_type,
-                "totalItems": count,
-                "duration": duration,
-                "deviceName": device_name,
-                "deviceId": device_id,
-                "bytes": bytes
-            }
-            results2.append(dictz)
+                dicts = {
+                    "user_id": user_id,
+                    "userName": user_name,
+                    "timespan": timespan,
+                    "lastViewedAt": last_viewed,
+                    "metaType": meta_type,
+                    "totalItems": count,
+                    "duration": duration,
+                    "deviceName": device_name,
+                    "deviceId": device_id,
+                    "bytes": data_bytes
+                }
+                Log.Debug("Appending record %s" % i)
+                results2.append(dicts)
+            else:
+                Log.Debug("Skipping record %s" % i)
+            i += 1
         Log.Debug("Query1 completed.")
         lines = []
+
+        temp_selector = "WHERE mi.metadata_type IN %s " % query_types
+
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
+
             selectors = {
                 "Userid": "acc.id",
                 "Username": "acc.name",
-                "Type": "mi.metadata_type",
                 "Title": "mi.title"
             }
 
             for header_key, value in headers.items():
                 if header_key in selectors:
-                    Log.Debug("Header key %s is present" % header_key)
                     header_key = selectors[header_key]
+                    Log.Debug("Adding selector %s for value of %s" % (header_key, value))
                     lines.append("%s = '%s'" % (header_key, value))
 
-        selector = "mi.metadata_type"
-        if "Type" in headers:
-            temp_selector = "WHERE "
-        else:
-            temp_selector = "WHERE %s IN %s " % (selector, query_types)
-
         if bool(lines):
-            Log.Debug("We have lines too...")
-            query_selector = temp_selector + "AND".join(lines)
+            query_selector = temp_selector + " AND " + "AND".join(lines)
         else:
             query_selector = temp_selector
 
@@ -721,31 +683,39 @@ def query_user_stats(headers):
                     INNER JOIN accounts as acc
                        ON acc.id = metadata_item_views.account_id
                 %s
-                ORDER BY metadata_item_views.viewed_at desc
-                %s;""" % (query_selector, limit)
+                ORDER BY metadata_item_views.viewed_at desc;""" % query_selector
 
         Log.Debug("Query2 is '%s'" % query)
         results = []
+        container_max = int(container_start) + int(container_size)
+        i = 0
         for ratingkey, title, grandparent_title, viewed_at, meta_type, user_id, user_name in cursor.execute(
                 query):
-            last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+            if i >= container_max:
+                break
+            if i >= container_start:
+                last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
-            dicts = {
-                "user_id": user_id,
-                "userName": user_name,
-                "title": title,
-                "grandparentTitle": grandparent_title,
-                "lastViewedAt": last_viewed,
-                "type": meta_type,
-                "ratingKey": ratingkey,
-                "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
-                "art": "/library/metadata/" + str(ratingkey) + "/art"
-            }
+                dicts = {
+                    "user_id": user_id,
+                    "userName": user_name,
+                    "title": title,
+                    "grandparentTitle": grandparent_title,
+                    "lastViewedAt": last_viewed,
+                    "type": meta_type,
+                    "ratingKey": ratingkey,
+                    "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
+                    "art": "/library/metadata/" + str(ratingkey) + "/art"
+                }
 
-            if meta_type == "episode":
-                dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
+                if meta_type == "episode":
+                    dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
+                Log.Debug("Appending record %s" % i)
+                results.append(dicts)
+            else:
+                Log.Debug("Skipping record %s" % i)
 
-            results.append(dicts)
+            i += 1
         Log.Debug("Query2 completed")
         close_connection(connection)
         return [results, results2]
@@ -755,11 +725,6 @@ def query_user_stats(headers):
 
 
 def query_library_stats(headers):
-    if "Limit" in headers:
-        limit = headers["Limit"]
-        del headers["Limit"]
-    else:
-        limit = None
 
     meta_types = {
         1: "movie",
