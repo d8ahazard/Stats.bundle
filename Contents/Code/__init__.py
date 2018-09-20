@@ -14,6 +14,11 @@ import glob
 import os
 import sys
 from zipfile import ZipFile, ZIP_DEFLATED
+
+import time
+
+from datetime import datetime
+
 import log_helper
 from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
     ViewContainer, AnyContainer
@@ -264,7 +269,6 @@ def Library():
         item_count = 0
         play_count = 0
         playable_count = 0
-        last_item = None
         section_children = []
         for record in sections[name]:
             item_count += record["totalItems"]
@@ -279,15 +283,15 @@ def Library():
             }
             vc = AnyContainer(record_data, item_type, False)
 
-            if record["lastViewed"] is not None:
+            if record["lastViewedAt"] is not None:
                 last_item = {
                     "title": record['title'],
                     "grandparentTitle": record['grandparentTitle'],
                     "art": record['art'],
                     "thumb": record['thumb'],
                     "ratingKey": record['ratingKey'],
-                    "viewedAt": record['lastViewed'],
-                    "userTitle": record['userTitle'],
+                    "lastViewedAt": record['lastViewedAt'],
+                    "username": record['username'],
                     "userId": record['userId']
                 }
                 li = AnyContainer(last_item, "lastViewed", False)
@@ -341,7 +345,7 @@ def User():
         del temp2
         for name in users1:
             user_id = users1[name][0]["user_id"]
-            uc = UserContainer({"name": name, "id": user_id})
+            uc = UserContainer({"username": name, "id": user_id})
             ac = AnyContainer({"totalPlays": len(users1[name])}, "Media")
             Log.Debug("Creating container1 for %s" % name)
             i = 0
@@ -553,7 +557,7 @@ def query_tag_stats(selection, limit=1000):
                 dicts = {
                     "title": title,
                     "type": tag_title,
-                    "count": tag_count,
+                    "totalItems": tag_count,
                     "metaType": meta_type,
                     "ratingKey": ratingkey,
                     "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
@@ -568,7 +572,7 @@ def query_tag_stats(selection, limit=1000):
             for tag, ratingkey, count in cursor.execute(query):
                 dicts = {
                     "title": tag,
-                    "count": count,
+                    "totalItems": count,
                     "ratingKey": ratingkey,
                     "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
                     "art": "/library/metadata/" + str(ratingkey) + "/art"
@@ -655,13 +659,15 @@ def query_user_stats(headers):
         Log.Debug("Query1) is '%s'" % query2)
         for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, bytes in cursor.execute(
                 query2):
+            last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+
             dictz = {
                 "user_id": user_id,
                 "userName": user_name,
                 "timespan": timespan,
-                "viewedAt": viewed_at,
+                "lastViewedAt": last_viewed,
                 "metaType": meta_type,
-                "count": count,
+                "totalItems": count,
                 "duration": duration,
                 "deviceName": device_name,
                 "deviceId": device_id,
@@ -670,7 +676,6 @@ def query_user_stats(headers):
             results2.append(dictz)
         Log.Debug("Query1 completed.")
         lines = []
-        query_selector = ""
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
             selectors = {
@@ -715,12 +720,14 @@ def query_user_stats(headers):
         results = []
         for ratingkey, title, grandparent_title, viewed_at, meta_type, user_id, user_name in cursor.execute(
                 query):
+            last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+
             dicts = {
                 "user_id": user_id,
                 "userName": user_name,
                 "title": title,
                 "grandparentTitle": grandparent_title,
-                "lastViewed": viewed_at,
+                "lastViewedAt": last_viewed,
                 "type": meta_type,
                 "ratingKey": ratingkey,
                 "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
@@ -831,15 +838,18 @@ def query_library_stats(headers):
                 Log.Debug("Unkown meta type for %s of %s" % (title, meta_type))
                 meta_type = "unknown"
 
+            if last_viewed is not None:
+                last_viewed = int(time.mktime(time.strptime(last_viewed, '%Y-%m-%d %H:%M:%S')))
+
             dicts = {
                 "section": section,
                 "totalItems": item_count,
                 "playCount": play_count,
                 "title": title,
                 "grandparentTitle": grandparent_title,
-                "lastViewed": last_viewed,
+                "lastViewedAt": last_viewed,
                 "type": meta_type,
-                "userTitle": user_name,
+                "username": user_name,
                 "userId": user_id,
                 "sectionType": sec_type,
                 "sectionTitle": sec_name,
