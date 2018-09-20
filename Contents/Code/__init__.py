@@ -14,7 +14,7 @@ import glob
 import os
 import sys
 from zipfile import ZipFile, ZIP_DEFLATED
-
+import xml.etree.ElementTree as ET
 import time
 
 from datetime import datetime
@@ -30,9 +30,9 @@ from helpers.variable import pms_path
 from subzero.lib.io import FileIO
 
 UNICODE_MAP = {
-            65535: 'ucs2',
-            1114111: 'ucs4'
-        }
+    65535: 'ucs2',
+    1114111: 'ucs4'
+}
 
 pms_path = pms_path()
 Log.Debug("New PMS Path is '%s'" % pms_path)
@@ -84,6 +84,8 @@ def Start():
         os.environ["Loaded"] = "True"
     else:
         os.environ["Loaded"] = "False"
+
+    get_entitlements()
 
 
 @handler(PREFIX, NAME)
@@ -487,7 +489,7 @@ def sort_headers(header_list, strict=False):
 
 def query_tag_stats(selection, limit=1000):
     Log.Debug("Limit is set to %s" % limit)
-
+    entitlements = get_entitlements()
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
@@ -495,7 +497,7 @@ def query_tag_stats(selection, limit=1000):
         results = []
 
         options = ["all", "actor", "director", "writer", "genre"]
-
+        tag_selection = ""
         if selection not in options:
             return False
 
@@ -519,6 +521,8 @@ def query_tag_stats(selection, limit=1000):
         if selection == "genre":
             fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
             tag_selection = "tags.tag_type = 5"
+
+        tag_selection += " AND mt.library_section_id in %s" % entitlements
 
         query = """SELECT %s
                         AS Total FROM tags
@@ -609,6 +613,7 @@ def query_user_stats(headers):
     connection = conn[1]
     query_types = "(1, 4, 10)"
     if cursor is not None:
+        entitlements = get_entitlements()
         if limit is not None:
             limit = "LIMIT %s" % limit
         else:
@@ -641,6 +646,8 @@ def query_user_stats(headers):
             query_selector = temp_selector + "AND".join(lines)
         else:
             query_selector = temp_selector
+
+        # TODO: Add another method here to get the user's ID by Plex Token and only return their info?
 
         query2 = """select sm.account_id, sm.timespan, sm.at, sm.metadata_type, sm.count, sm.duration,
                                  accounts.name,
@@ -703,6 +710,7 @@ def query_user_stats(headers):
         else:
             query_selector = temp_selector
 
+        query_selector += " AND mi.library_section_id in %s" % entitlements
 
         query = """SELECT mi.id AS media_id, 
                     metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
@@ -771,7 +779,8 @@ def query_library_stats(headers):
     cursor = conn[0]
     connection = conn[1]
     if cursor is not None:
-        query = """select
+        entitlements = get_entitlements()
+        query = """SELECT
             FirstSet.library_section_id,
             FirstSet.metadata_type,    
             FirstSet.item_count,
@@ -784,53 +793,55 @@ def query_library_stats(headers):
             SecondSet.user_id,
             FirstSet.section_name,
             FirstSet.section_type
-        from 
+        FROM 
             (
                 SELECT
                     mi.library_section_id,
                     mi.metadata_type,
-                    ls.name as section_name, ls.section_type,
-                    count(mi.metadata_type) as item_count
-                FROM metadata_items as mi
-                INNER JOIN library_sections as ls
+                    ls.name AS section_name, ls.section_type,
+                    count(mi.metadata_type) AS item_count
+                FROM metadata_items AS mi
+                INNER JOIN library_sections AS ls
                     ON mi.library_section_id = ls.id
-                WHERE library_section_id is NOT NULL
+                WHERE library_section_id IS NOT NULL
                 GROUP BY library_section_id, metadata_type
-            ) as FirstSet
+            ) AS FirstSet
         LEFT JOIN
             (
                 SELECT 
-                    mi.id as rating_key,
-                    miv.title as title,
+                    mi.id AS rating_key,
+                    miv.title AS title,
                     miv.library_section_id,
-                    miv.viewed_at as last_viewed,
+                    miv.viewed_at AS last_viewed,
                     miv.metadata_type,
-                    miv.grandparent_title as grandparent_title,
-                    count(miv.metadata_type) as play_count,
-                    accounts.name as user_name, accounts.id as user_id,
-                    ls.name as section_name, ls.section_type as section_type,
-                    max(viewed_at) as last_viewed 
-                FROM metadata_item_views as miv
-                INNER JOIN library_sections as ls
+                    miv.grandparent_title AS grandparent_title,
+                    count(miv.metadata_type) AS play_count,
+                    accounts.name AS user_name, accounts.id AS user_id,
+                    ls.name AS section_name, ls.section_type AS section_type,
+                    max(viewed_at) AS last_viewed 
+                FROM metadata_item_views AS miv
+                INNER JOIN library_sections AS ls
                     ON miv.library_section_id = ls.id
-                INNER JOIN metadata_items as mi
+                INNER JOIN metadata_items AS mi
                     ON mi.title = miv.title
                 INNER JOIN accounts
                     ON miv.account_id = accounts.id
                 AND
                     mi.metadata_type = miv.metadata_type             
-                WHERE mi.library_section_id is NOT NULL 
+                WHERE mi.library_section_id IS NOT NULL
+                AND mi.library_section_id in %s
                 GROUP BY miv.metadata_type
-            ) as SecondSet
-        on FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
+            ) AS SecondSet
+        ON FirstSet.library_section_id = SecondSet.library_section_id AND FirstSet.metadata_type = SecondSet.metadata_type
+        WHERE FirstSet.library_section_id in %s
         GROUP BY FirstSet.library_section_id, FirstSet.metadata_type
-        ORDER BY FirstSet.library_section_id;"""
+        ORDER BY FirstSet.library_section_id;""" % (entitlements, entitlements)
 
         Log.Debug("Querys is '%s'" % query)
         results = []
         for section, meta_type, item_count, play_count, ratingkey, title, \
             grandparent_title, last_viewed, user_name, user_id, sec_name, sec_type in cursor.execute(
-                query):
+            query):
 
             if meta_type in meta_types:
                 meta_type = meta_types[meta_type]
@@ -918,7 +929,6 @@ def init_apsw():
 
 
 def insert_paths(distribution, libraries_path):
-
     # Retrieve system details
     system = SystemHelper.name()
     architecture = SystemHelper.architecture()
@@ -1027,3 +1037,48 @@ def insert_paths_windows(libraries_path, system, architecture):
     if ucs:
         Log.Debug("Inserting UCS path")
         PathHelper.insert(libraries_path, system, architecture, vcr, ucs)
+
+
+def get_entitlements():
+    token = False
+    allowed_keys = []
+
+    for key, value in Request.Headers.items():
+        Log.Debug("Header key %s is %s", key, value)
+        if key in ("X-Plex-Token", "Token"):
+            Log.Debug("We have a Token")
+            token = value
+
+    if token:
+        server_port = os.environ.get("PLEXSERVERPORT")
+        if server_port is None:
+            server_port = "32400"
+        server_host = Network.Address
+        if server_host is None:
+            server_host = "localhost"
+
+        try:
+            my_url = "http://%s:%s/library/sections?X-Plex-Token=%s" % (server_host, server_port, token)
+        except TypeError:
+            my_url = False
+            pass
+
+        if my_url:
+            Log.Debug("Gonna touch myself at '%s'" % my_url)
+            req = HTTP.Request(my_url)
+            req.load()
+            if hasattr(req, 'content'):
+                client_data = req.content
+                root = ET.fromstring(client_data)
+                for section in root.iter('Directory'):
+                    Log.Debug("Section?")
+                    allowed_keys.append(section.get("key"))
+
+    if len(allowed_keys) != 0:
+        allowed_keys = "(" + ", ".join(allowed_keys) + ")"
+        Log.Debug("Hey, we got the keys: %s" % allowed_keys)
+    else:
+        allowed_keys = "()"
+        Log.Debug("No keys, try again.")
+
+    return allowed_keys
