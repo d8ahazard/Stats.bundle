@@ -137,8 +137,8 @@ def ValidatePrefs():
     return
 
 
-@route(APP + '/all')
-@route(PREFIX2 + '/stats/all')
+@route(APP + '/tags/all')
+@route(PREFIX2 + '/stats/tags/all')
 def All():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
@@ -157,8 +157,8 @@ def All():
     return mc
 
 
-@route(APP + '/actor')
-@route(PREFIX2 + '/stats/actor')
+@route(APP + '/tags/actor')
+@route(PREFIX2 + '/stats/tags/actor')
 def Actor():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
@@ -177,8 +177,8 @@ def Actor():
     return mc
 
 
-@route(APP + '/director')
-@route(PREFIX2 + '/stats/director')
+@route(APP + '/tags/director')
+@route(PREFIX2 + '/stats/tags/director')
 def Director():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
@@ -197,8 +197,8 @@ def Director():
     return mc
 
 
-@route(APP + '/writer')
-@route(PREFIX2 + '/stats/writer')
+@route(APP + '/tags/writer')
+@route(PREFIX2 + '/stats/tags/writer')
 def Writer():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
@@ -217,8 +217,8 @@ def Writer():
     return mc
 
 
-@route(APP + '/genre')
-@route(PREFIX2 + '/stats/genre')
+@route(APP + '/tags/genre')
+@route(PREFIX2 + '/stats/tags/genre')
 def Genre():
     mc = MediaContainer()
     headers = sort_headers(["Limit", "Type"])
