@@ -535,7 +535,7 @@ def query_tag_stats(selection, headers):
 
         if selection == "genre":
             fetch_values = "tags.tag, mt.id, COUNT(tags.id)"
-            tag_selection = "tags.tag_type = 5"
+            tag_selection = "tags.tag_type = 1"
 
         tag_selection += " AND mt.library_section_id in %s" % entitlements
 
