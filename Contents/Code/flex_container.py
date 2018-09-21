@@ -68,17 +68,18 @@ class FlexContainer(ObjectClass):
                         allowed = True
 
                 value = self_attributes.get(key)
-                if allowed and value not in [None, ""]:
-                    replace = {
-                        "&": "&amp;",
-                        "<": "&lt;",
-                        ">": "&gt;",
-                        "\"": "&quot;"
-                    }
-                    for search, replace in replace.items():
-                        value = str(value).replace(search, replace)
+                if allowed:
+                    if value not in [None, ""]:
+                        replace = {
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            "\"": "&quot;"
+                        }
+                        for search, replace in replace.items():
+                            value = str(value).replace(search, replace)
 
-                    attribute_string += ' %s="%s"' % (key, value)
+                        attribute_string += ' %s="%s"' % (key, value)
                 else:
                     Log.Error("Attribute " + key + " is not allowed in this container.")
             attribute_string += " "
@@ -87,22 +88,5 @@ class FlexContainer(ObjectClass):
             string = "<%s%s/>" % (self_tag, attribute_string)
         else:
             string = "<%s%s>%s</%s>\n" % (self_tag, attribute_string, child_string, self_tag)
-
-        return string
-
-        #
-        # if self.children is not None:
-        #     string += '>\n'
-        #     for obj in self.children:
-        #         if type(obj) == str:
-        #             Log.Error("Here's a string: '%s" % obj)
-        #         else:
-        #             Log.Debug("Recursing for %s" % self_tag)
-        #             string += obj.to_xml()
-        #
-        #     string += '</' + self_tag + '>'
-        #
-        # else:
-        #     string += '/>\n'
 
         return string

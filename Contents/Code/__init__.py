@@ -284,7 +284,6 @@ def Growth():
             for day, records in days.items():
                 day_container = FlexContainer("Day", {"value": day}, False)
                 for record in records:
-                    Log.Debug("Hey, a records: %s" % JSON.StringFromObject(record))
                     added_container = FlexContainer("Added", record, False)
                     day_container.add(added_container)
                 month_total += day_container.size()
@@ -305,55 +304,43 @@ def User():
     headers = sort_headers(["Type", "Userid", "Username", "Container-start", "Container-Size", "Device", "Title"])
     container_size = headers.get("Container-Size") or 20
     container_start = headers.get("Container-Start") or 0
-    records = query_user_stats(headers)
-    if records is not None:
-        users1 = {}
-        users2 = {}
-        temp1 = records[0]
-        temp2 = records[1]
-        del records
-        for record in temp1:
-            user_name = record["userName"]
-            if user_name not in users1:
-                users1[user_name] = []
-            del (record["userName"])
-            users1[user_name].append(dict(record))
-        temp1 = temp2
-        for record in temp1:
-            user_name = record["userName"]
-            if user_name not in users2:
-                users2[user_name] = []
-            del (record["userName"])
-            users2[user_name].append(dict(record))
-        del temp2
-        for name in users1:
-            user_id = users1[name][0]["user_id"]
-            uc = UserContainer({"username": name, "id": user_id})
-            ac = AnyContainer({"totalPlays": len(users1[name])}, "Media")
-            Log.Debug("Creating container1 for %s" % name)
-            i = 0
-            container_max = int(container_start) + int(container_size)
-            for record in users1[name]:
-                if i >= container_max:
-                    break
-                if i >= container_start:
-                    del (record["user_id"])
-                    ac.add(ViewContainer(record))
-                i += 1
+    users_data = query_user_stats(headers)
 
-            uc.add(ac)
-            ac = AnyContainer(None, "Stats")
-            if name in users2:
-                ac = AnyContainer({"totalItems": len(users2[name])}, "Stats")
-                i = 0
-                for record in users2[name]:
-                    if i >= container_max:
-                        break
-                    if i >= container_start:
-                        del (record["user_id"])
-                        ac.add(ViewContainer(record))
-                    i += 1
-            uc.add(ac)
+    if users_data is not None:
+        users = users_data[0]
+        devices = users_data[1]
+        device_names = []
+        for user, records in users.items():
+            uc = FlexContainer("User", {"userName": user})
+            sc = FlexContainer("Views")
+            for record in records:
+                vc = FlexContainer("View", record, False)
+                if "deviceName" in record:
+                    if record["deviceName"] not in device_names:
+                        device_names.append(record["deviceName"])
+                sc.add(vc)
+            uc.add(sc)
+            dp = FlexContainer("Devices", None, False)
+            chrome_data = None
+            for device in devices:
+                Log.Debug("Comparing %s to %s" % (user, device["userName"]))
+                if device["userName"] == user:
+                    if device["deviceName"] in device_names:
+                        if device["deviceName"] != "Chrome":
+                            Log.Debug("Found a device for %s" % user)
+                            dc = FlexContainer("Device", device)
+                            dp.add(dc)
+                        else:
+                            chrome_bytes = 0
+                            if chrome_data is None:
+                                chrome_data = device
+                            else:
+                                chrome_bytes = device["totalBytes"] + chrome_data.get("totalBytes") or 0
+                            chrome_data["totalBytes"] = chrome_bytes
+            if chrome_data is not None:
+                dc = FlexContainer("Device", chrome_data)
+                dp.add(dc)
+            uc.add(dp)
             mc.add(uc)
 
     Log.Debug("Still alive, returning data")
@@ -609,6 +596,7 @@ def query_tag_stats(selection, headers):
 def query_user_stats(headers):
     container_start = int(headers.get("Container-Start") or 0)
     container_size = int(headers.get("Container-Size") or 20)
+    container_max = container_start + container_size
     meta_types = {
         "movie": 1,
         "show": 2,
@@ -617,154 +605,180 @@ def query_user_stats(headers):
         "track": 10
     }
     if "Type" in headers:
-        if headers["Type"] in meta_types:
-            headers['Type'] = meta_types[headers['Type']]
+        meta_type = headers.get("Type")
+        if meta_type in meta_types:
+            meta_type = meta_types[headers['Type']]
+        if int(meta_type) == meta_type:
+            query_types = [int(meta_type)]
+        else:
+            Log.Error("Specified meta type %s is not an integer!" % meta_type)
+            query_types = [1, 4, 6]
+    else:
+        query_types = [1, 4, 6]
 
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
-    query_types = headers.get("Type") or "1, 4, 6"
-    query_types = "(%s)" % query_types
+
     if cursor is not None:
+        selectors = {}
         entitlements = get_entitlements()
-        lines = []
+        selectors["sm.metadata_type"] = ["IN", query_types]
         results2 = []
-        temp_selector = "WHERE sm.metadata_type IN %s" % query_types
 
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
             selectors = {
-                "Userid": "sm.account_id",
-                "Username": "accounts.name",
-                "Type": "sm.metadata_type"
+                "Userid": "qs.account_id",
+                "Username": "qs.account_name",
+                "Type": "qs.metadata_type"
             }
 
             for header_key, value in headers.items():
                 if header_key in selectors:
-                    Log.Debug("Header key %s is present" % header_key)
-                    header_key = selectors[header_key]
-                    lines.append("%s = '%s'" % (header_key, value))
+                    Log.Debug("Valid selector %s found" % header_key)
+                    selector = selectors[header_key]
+                    selectors[selector] = ["=", value]
 
-        if bool(lines):
-            Log.Debug("We have lines too...")
-            query_selector = temp_selector + " AND " + "AND".join(lines)
-        else:
-            query_selector = temp_selector
+        query_selectors = []
+        query_params = []
+        for key, data in selectors.items():
+            select_action = data[0]
+            select_value = data[1]
+            if isinstance(select_value, list):
+                query_selector = "%s %s (%s)" % (key, select_action, ",".join('?'*len(select_value)))
+                for sv in select_value:
+                    query_params.append(sv)
+            else:
+                query_selector = "%s %s ?" % (key, select_action)
+                query_params.append(select_value)
+
+            query_selectors.append(query_selector)
+
+        query_string = "WHERE " + "AND".join(query_selectors)
+        Log.Debug("Query string is '%s'" % query_string)
 
         # TODO: Add another method here to get the user's ID by Plex Token and only return their info?
 
-        query2 = """select sm.account_id, sm.timespan, sm.at, sm.metadata_type, sm.count, sm.duration,
-                                 accounts.name,
-                                 devices.name AS device_name, devices.identifier AS device_id,
-                                 sb.bytes from statistics_media AS sm
-                                 INNER JOIN statistics_bandwidth as sb
-                                     ON sb.at = sm.at AND sb.account_id = sm.account_id AND sb.device_id = sm.device_id
-                                 INNER JOIN accounts
-                                     ON accounts.id = sm.account_id
-                                 INNER JOIN devices
-                                     ON devices.id = sm.device_id
-                                     %s
-                                 ORDER BY sm.at DESC;""" % query_selector
+        query2 = """select accounts.name, sm.at, sm.metadata_type, sm.account_id,
+                    devices.name AS device_name, devices.identifier AS device_id,
+                    sb.bytes from statistics_media AS sm
+                    INNER JOIN statistics_bandwidth as sb
+                     ON sb.at = sm.at AND sb.account_id = sm.account_id AND sb.device_id = sm.device_id
+                    INNER JOIN accounts
+                     ON accounts.id = sm.account_id
+                    INNER JOIN devices
+                     ON devices.id = sm.device_id
+                    where count != 0 AND sm.metadata_type in (1,4,10)
+                    ORDER BY sm.at DESC;"""
 
         Log.Debug("Query1) is '%s'" % query2)
-        container_max = container_start + container_size
-        i = 0
-        for user_id, timespan, viewed_at, meta_type, count, duration, user_name, device_name, device_id, data_bytes in cursor.execute(
+
+        for user_name, viewed_at, meta_type, user_id, device_name, device_id, data_bytes in cursor.execute(
                 query2):
-            if i >= container_max:
-                break
-            if i >= container_start:
-                last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+            last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
-                dicts = {
-                    "user_id": user_id,
-                    "userName": user_name,
-                    "timespan": timespan,
-                    "lastViewedAt": last_viewed,
-                    "metaType": meta_type,
-                    "totalItems": count,
-                    "duration": duration,
-                    "deviceName": device_name,
-                    "deviceId": device_id,
-                    "bytes": data_bytes
-                }
-                Log.Debug("Appending record %s" % i)
-                results2.append(dicts)
-            else:
-                Log.Debug("Skipping record %s" % i)
-            i += 1
-        Log.Debug("Query1 completed.")
-        lines = []
-
-        temp_selector = "WHERE mi.metadata_type IN %s " % query_types
-
-        if len(headers.keys()) != 0:
-            Log.Debug("We have headers...")
-
-            selectors = {
-                "Userid": "acc.id",
-                "Username": "acc.name",
-                "Title": "mi.title"
+            dicts = {
+                "userId": user_id,
+                "userName": user_name,
+                "lastViewedAt": last_viewed,
+                "type": meta_type,
+                "deviceName": device_name,
+                "deviceId": device_id,
+                "bytes": data_bytes
             }
+            results2.append(dicts)
+        Log.Debug("Query1 completed.")
 
-            for header_key, value in headers.items():
-                if header_key in selectors:
-                    header_key = selectors[header_key]
-                    Log.Debug("Adding selector %s for value of %s" % (header_key, value))
-                    lines.append("%s = '%s'" % (header_key, value))
-
-        if bool(lines):
-            query_selector = temp_selector + " AND " + "AND".join(lines)
-        else:
-            query_selector = temp_selector
-
-        query_selector += " AND mi.library_section_id in %s" % entitlements
-
-        query = """SELECT mi.id AS media_id, 
-                    metadata_item_views.title, metadata_item_views.grandparent_title, metadata_item_views.viewed_at,
-                    mi.metadata_type,
-                    acc.id, acc.name from metadata_item_views
-                    INNER JOIN metadata_items AS mi 
-                       ON metadata_item_views.title = mi.title
-                    INNER JOIN accounts as acc
-                       ON acc.id = metadata_item_views.account_id
-                %s
-                ORDER BY metadata_item_views.viewed_at desc;""" % query_selector
+        query = """SELECT 
+                        miv.account_id, miv.library_section_id, miv.grandparent_title, miv.parent_title, miv.title,
+                        mi.id as rating_key, mi.tags_genre as genre, mi.tags_country as country, mi.year,
+                        miv.viewed_at, miv.metadata_type, accounts.name
+                    FROM metadata_item_views as miv
+                    JOIN accounts
+                    ON 
+                    miv.account_id = accounts.id
+                    LEFT JOIN metadata_items as mi
+                    ON 
+                        miv.title = mi.title 
+                        AND miv.thumb_url = mi.user_thumb_url 
+                        AND mi.originally_available_at = miv.originally_available_at
+                    WHERE miv.metadata_type in (1,4,10)                        
+                    ORDER BY miv.viewed_at desc;"""
 
         Log.Debug("Query2 is '%s'" % query)
         results = []
-        container_max = int(container_start) + int(container_size)
-        i = 0
-        for ratingkey, title, grandparent_title, viewed_at, meta_type, user_id, user_name in cursor.execute(
-                query):
-            if i >= container_max:
-                break
-            if i >= container_start:
-                last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+        for user_id, library_section, grandparent_title, parent_title, title,\
+                rating_key, genre, country, year,\
+                viewed_at, meta_type, user_name in cursor.execute(query):
 
-                dicts = {
-                    "user_id": user_id,
-                    "userName": user_name,
-                    "title": title,
-                    "grandparentTitle": grandparent_title,
-                    "lastViewedAt": last_viewed,
-                    "type": meta_type,
-                    "ratingKey": ratingkey,
-                    "thumb": "/library/metadata/" + str(ratingkey) + "/thumb",
-                    "art": "/library/metadata/" + str(ratingkey) + "/art"
-                }
+            last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
-                if meta_type == "episode":
-                    dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
-                Log.Debug("Appending record %s" % i)
-                results.append(dicts)
-            else:
-                Log.Debug("Skipping record %s" % i)
+            dicts = {
+                "userId": user_id,
+                "userName": user_name,
+                "title": title,
+                "parentTitle": parent_title,
+                "grandparentTitle": grandparent_title,
+                "librarySection": library_section,
+                "lastViewedAt": last_viewed,
+                "type": meta_type,
+                "ratingKey": rating_key,
+                "thumb": "/library/metadata/" + str(rating_key) + "/thumb",
+                "art": "/library/metadata/" + str(rating_key) + "/art",
+                "year": year,
+                "genre": genre,
+                "country": country
+            }
 
-            i += 1
+            if meta_type == "episode":
+                dicts["banner"] = "/library/metadata/" + str(rating_key) + "/banner/"
+
+            results.append(dicts)
+
         Log.Debug("Query2 completed")
+
+        query3 = """SELECT sum(bytes), account_id, device_id,
+                    accounts.name as account_name,
+                    devices.name as device_name, devices.identifier as machine_identifier
+                    FROM statistics_bandwidth
+                    INNER JOIN accounts
+                    ON accounts.id = account_id
+                    INNER JOIN devices
+                    ON devices.id = device_id
+                    GROUP BY account_id, device_id
+                    """
+
+        device_results = []
+        for total_bytes, account_id, device_id, account_name, device_name, machine_identifier in cursor.execute(query3):
+            device_dict = {
+                "userId": account_id,
+                "userName": account_name,
+                "deviceId": device_id,
+                "deviceName": device_name,
+                "machineIdentifier": machine_identifier,
+                "totalBytes": total_bytes
+            }
+            device_results.append(device_dict)
         close_connection(connection)
-        return [results, results2]
+        output = {}
+        for record in results:
+            record_date = str(record["lastViewedAt"])[:6]
+            record_user = record["userName"]
+            record_type = record["type"]
+            if record_user not in output:
+                output[record_user] = []
+            for check in results2:
+                check_date = str(check["lastViewedAt"])[:6]
+                check_user = check["userName"]
+                check_type = check["type"]
+                if check_date == record_date and check_user == record_user and check_type == record_type:
+                    for value in ["deviceName", "deviceId", "bytes"]:
+                        record[value] = check[value]
+
+            output[record_user].append(record)
+
+        return [output, device_results]
     else:
         Log.Error("DB Connection error!")
         return None
@@ -956,18 +970,18 @@ def query_library_growth(headers):
                     ON mi1.parent_id = mi2.id
                     LEFT JOIN metadata_items as mi3
                     ON mi2.parent_id = mi3.id
-                    WHERE mi1.added_at BETWEEN '%s' AND '%s'
+                    WHERE mi1.added_at BETWEEN ? AND ?
                     AND mi1.metadata_type IN (1, 4, 10)
                     AND mi1.title not in ("", "com.plexapp.agents")
                     ORDER BY mi1.added_at desc;
-        """ % (end_date, start_date)
-
+        """
+        params = (end_date, start_date)
         Log.Debug("Query is '%s'" % query)
         i = 0
         container_max = container_start + container_size
         for rating_key, title, year, meta_type, added_at, genres, country, \
                 parent_id, parent_title, parent_genre, parent_country,\
-                grandparent_id, grandparent_title, grandparent_genre, grandparent_country in cursor.execute(query):
+                grandparent_id, grandparent_title, grandparent_genre, grandparent_country in cursor.execute(query, params):
             if i >= container_max:
                 break
 
