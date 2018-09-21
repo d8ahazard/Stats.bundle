@@ -17,11 +17,12 @@ from zipfile import ZipFile, ZIP_DEFLATED
 import xml.etree.ElementTree as ET
 import time
 
-from datetime import datetime
+import datetime
 
 import log_helper
 from CustomContainer import MediaContainer, ZipObject, MetaContainer, StatContainer, UserContainer, \
     ViewContainer, AnyContainer
+from flex_container import FlexContainer
 from helpers import PathHelper
 from lib import Plex
 from helpers.system import SystemHelper
@@ -249,6 +250,51 @@ def Library():
 
         mc.add(ac)
 
+    return mc
+
+
+@route(APP + '/library/growth')
+@route(PREFIX2 + '/stats/library/growth')
+def Growth():
+    headers = sort_headers(["Interval", "Start", "End", "Container-Size", "Container-Start", "Type"])
+    records = query_library_growth(headers)
+    total_array = {}
+    for record in records:
+        dates = str(record["addedAt"])[:-9].split("-")
+        year = str(dates[0])
+        month = str(dates[1])
+        day = str(dates[2])
+        year_array = total_array.get(year) or {}
+        month_array = year_array.get(month) or {}
+        day_array = month_array.get(day) or []
+        day_array.append(record)
+        month_array[day] = day_array
+        year_array[month] = month_array
+        total_array[year] = year_array
+        Log.Debug("THis one was released in the year %s, month %s, day %s" % (year, month, day))
+
+    mc = MediaContainer()
+    for year, months in total_array.items():
+        Log.Debug("Looping for year %s" % year)
+        year_container = FlexContainer("Year", {"value": year})
+        year_total = 0
+        for month, days in months.items():
+            month_container = FlexContainer("Month", {"value": month})
+            month_total = 0
+            for day, records in days.items():
+                day_container = FlexContainer("Day", {"value": day}, False)
+                for record in records:
+                    Log.Debug("Hey, a records: %s" % JSON.StringFromObject(record))
+                    added_container = FlexContainer("Added", record, False)
+                    day_container.add(added_container)
+                month_total += day_container.size()
+                day_container.set("totalItems", day_container.size())
+                month_container.add(day_container)
+            month_container.set("totalItems", month_total)
+            year_total += month_total
+            year_container.add(month_container)
+        year_container.set("totalItems", year_total)
+        mc.add(year_container)
     return mc
 
 
@@ -583,7 +629,7 @@ def query_user_stats(headers):
         entitlements = get_entitlements()
         lines = []
         results2 = []
-        temp_selector = "WHERE m.metadata_type IN %s" % query_types
+        temp_selector = "WHERE sm.metadata_type IN %s" % query_types
 
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
@@ -628,7 +674,7 @@ def query_user_stats(headers):
             if i >= container_max:
                 break
             if i >= container_start:
-                last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+                last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
                 dicts = {
                     "user_id": user_id,
@@ -694,7 +740,7 @@ def query_user_stats(headers):
             if i >= container_max:
                 break
             if i >= container_start:
-                last_viewed = int(time.mktime(datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
+                last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
                 dicts = {
                     "user_id": user_id,
@@ -842,6 +888,124 @@ def query_library_stats(headers):
         return results
     else:
         Log.Error("Error connecting to DB!")
+
+
+def query_library_growth(headers):
+    container_size = int(headers.get("Container-Size") or 20)
+    container_start = int(headers.get("Container-Start") or 0)
+    results = []
+    date_format = "%Y-%m-%d %H:%M:%S"
+    meta_types = {
+        1: "movie",
+        4: "episode",
+        10: "track"
+    }
+    start_date = datetime.datetime.strftime(datetime.datetime.now(), date_format)
+    end_date = "1900-01-01 00:00:00"
+    if "Interval" in headers:
+        interval = int(headers["Interval"])
+        if "Start" in headers:
+            start_check = headers.get("Start")
+            if validate_date(start_check, date_format):
+                Log.Debug("We have a start date, we'll use that.")
+                start_date = start_check
+                end_date = datetime.datetime.strftime(datetime.datetime.strptime(
+                    start_date, date_format) - datetime.timedelta(days=interval), date_format)
+
+        elif "End" in headers:
+            end_check = headers.get("End")
+            if validate_date(end_check, date_format):
+                Log.Debug("We have an end date, we'll set interval from there.")
+                end_date = end_check
+                start_date = datetime.datetime.strftime(datetime.datetime.strptime(
+                    end_date, date_format) + datetime.timedelta(days=interval), date_format)
+
+        else:
+            Log.Debug("No start or end params, going %s days from today." % interval)
+            start_int = datetime.datetime.now()
+            start_date = datetime.datetime.now().strftime(date_format)
+            end_int = start_int - datetime.timedelta(days=interval)
+            end_date = datetime.datetime.strftime(end_int, date_format)
+            Log.Debug("start date is %s, end is %s" % (start_date, end_date))
+
+    else:
+        if "Start" in headers:
+            start_check = headers.get("Start")
+            if validate_date(start_check, date_format):
+                Log.Debug("We have a start date, we'll use that.")
+                start_date = start_check
+
+        if "End" in headers:
+            end_check = headers.get("End")
+            if validate_date(end_check, date_format):
+                Log.Debug("We have an end date, we'll set interval from there.")
+                end_date = end_check
+
+    Log.Debug("Okay, we should have start and end dates of %s and %s" % (start_date, end_date))
+
+    conn = fetch_cursor()
+    cursor = conn[0]
+    connection = conn[1]
+    if cursor is not None:
+        Log.Debug("Ready to query!")
+        query = """SELECT mi1.id, mi1.title, mi1.year, mi1.metadata_type, mi1.added_at, mi1.tags_genre as genre, mi1.tags_country as country, mi1.parent_id,
+                    mi2.title as parent_title, mi2.parent_id as grandparent_id, mi2.tags_genre as parent_genre, mi2.tags_country as parent_country,
+                    mi3.title as grandparent_title, mi3.tags_genre as grandparent_genre, mi3.tags_country as grandparent_country
+                    FROM metadata_items as mi1
+                    LEFT JOIN metadata_items as mi2
+                    ON mi1.parent_id = mi2.id
+                    LEFT JOIN metadata_items as mi3
+                    ON mi2.parent_id = mi3.id
+                    WHERE mi1.added_at BETWEEN '%s' AND '%s'
+                    AND mi1.metadata_type IN (1, 4, 10)
+                    AND mi1.title not in ("", "com.plexapp.agents")
+                    ORDER BY mi1.added_at desc;
+        """ % (end_date, start_date)
+
+        Log.Debug("Query is '%s'" % query)
+        i = 0
+        container_max = container_start + container_size
+        for rating_key, title, year, meta_type, added_at, genres, country, \
+                parent_id, parent_title, parent_genre, parent_country,\
+                grandparent_id, grandparent_title, grandparent_genre, grandparent_country in cursor.execute(query):
+            if i >= container_max:
+                break
+
+            if i >= container_start:
+                meta_type = meta_types.get(meta_type) or meta_type
+                dicts = {
+                    "ratingKey": rating_key,
+                    "title": title,
+                    "parentTitle": parent_title,
+                    "parentId": parent_id,
+                    "parentGenre": parent_genre,
+                    "parentCountry": parent_country,
+                    "grandparentTitle": grandparent_title,
+                    "grandparentId": grandparent_id,
+                    "grandparentGenre": grandparent_genre,
+                    "grandparentCountry": grandparent_country,
+                    "year": year,
+                    "thumb": "/library/metadata/" + str(rating_key) + "/thumb",
+                    "art": "/library/metadata/" + str(rating_key) + "/art",
+                    "type": meta_type,
+                    "genres": genres,
+                    "country": country,
+                    "addedAt": added_at
+                }
+                results.append(dicts)
+            i += 1
+        close_connection(connection)
+    return results
+
+
+
+def validate_date(date_text, date_format):
+    try:
+        datetime.datetime.strptime(date_text, date_format)
+        return True
+    except ValueError:
+        Log.Error("Incorrect date format, should be %s" % date_format)
+        return False
 
 
 def fetch_cursor():
