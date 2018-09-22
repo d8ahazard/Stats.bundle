@@ -35,6 +35,32 @@ UNICODE_MAP = {
     1114111: 'ucs4'
 }
 
+META_TYPE_NAMES = {
+        "movie": 1,
+        "show": 2,
+        "episode": 4,
+        "album": 9,
+        "track": 10
+}
+
+META_TYPE_IDS = {
+    1: "movie",
+    2: "show",
+    3: "season",
+    4: "episode",
+    8: "artist",
+    9: "album",
+    10: "track",
+    12: "extra",
+    13: "photo",
+    15: "playlist",
+    18: "collection"
+}
+
+DEFAULT_CONTAINER_SIZE = 100000
+DEFAULT_CONTAINER_START = 0
+DATE_STRUCTURE = "%Y-%m-%d %H:%M:%S"
+
 pms_path = pms_path()
 Log.Debug("New PMS Path is '%s'" % pms_path)
 dbPath = os.path.join(pms_path, "Plug-in Support", "Databases", "com.plexapp.plugins.library.db")
@@ -138,36 +164,36 @@ def ValidatePrefs():
     return
 
 
-@route(APP + '/tags')
-@route(PREFIX2 + '/stats/tags')
+@route(APP + '/tag')
+@route(PREFIX2 + '/stats/tag')
 def All():
     mc = build_tag_container("all")
     return mc
 
 
-@route(APP + '/tags/actor')
-@route(PREFIX2 + '/stats/tags/actor')
+@route(APP + '/tag/actor')
+@route(PREFIX2 + '/stats/tag/actor')
 def Actor():
     mc = build_tag_container("actor")
     return mc
 
 
-@route(APP + '/tags/director')
-@route(PREFIX2 + '/stats/tags/director')
+@route(APP + '/tag/director')
+@route(PREFIX2 + '/stats/tag/director')
 def Director():
     mc = build_tag_container("director")
     return mc
 
 
-@route(APP + '/tags/writer')
-@route(PREFIX2 + '/stats/tags/writer')
+@route(APP + '/tag/writer')
+@route(PREFIX2 + '/stats/tag/writer')
 def Writer():
     mc = build_tag_container("writer")
     return mc
 
 
-@route(APP + '/tags/genre')
-@route(PREFIX2 + '/stats/tags/genre')
+@route(APP + '/tag/genre')
+@route(PREFIX2 + '/stats/tag/genre')
 def Genre():
     mc = build_tag_container("genre")
     return mc
@@ -337,8 +363,8 @@ def Growth():
 def User():
     mc = MediaContainer()
     headers = sort_headers(["Type", "Userid", "Username", "Container-start", "Container-Size", "Device", "Title"])
-    container_start = int(headers.get("Container-Start") or 0)
-    container_size = int(headers.get("Container-Size") or 20)
+    container_start = int(headers.get("Container-Start") or DEFAULT_CONTAINER_START)
+    container_size = int(headers.get("Container-Size") or DEFAULT_CONTAINER_SIZE)
     container_max = container_start + container_size
     users_data = query_user_stats(headers)
 
@@ -347,10 +373,14 @@ def User():
         devices = users_data[1]
         device_names = []
         for user, records in users.items():
-            uc = FlexContainer("User", {"userName": user})
+            last_active = datetime.datetime.strptime("1900-01-01 00:00:00", DATE_STRUCTURE)
+            uc = FlexContainer("User", {"userName": user}, False)
             sc = FlexContainer("Views")
             i = 0
             for record in records:
+                viewed_at = datetime.datetime.fromtimestamp(record["lastViewedAt"])
+                if viewed_at > last_active:
+                    last_active = viewed_at
                 if i >= container_max:
                     break
                 if i >= container_start:
@@ -360,6 +390,7 @@ def User():
                             device_names.append(record["deviceName"])
                     sc.add(vc)
             uc.add(sc)
+            uc.set("lastSeen", last_active)
             dp = FlexContainer("Devices", None, False)
             chrome_data = None
             for device in devices:
@@ -388,8 +419,8 @@ def User():
 
 
 # This guy lets us fetch logs remotely if needed
-@route(PREFIX + '/logs')
-@route(PREFIX2 + '/logs')
+@route(PREFIX + '/log')
+@route(PREFIX2 + '/log')
 def DownloadLogs():
     buff = StringIO.StringIO()
     zip_archive = ZipFile(buff, mode='w', compression=ZIP_DEFLATED)
@@ -531,8 +562,8 @@ def build_tag_container(tag_type):
 
 
 def query_tag_stats(selection, headers):
-    container_size = int(headers.get("Container-Size") or 20)
-    container_start = int(headers.get("Container-Start") or 0)
+    container_size = int(headers.get("Container-Size") or DEFAULT_CONTAINER_SIZE)
+    container_start = int(headers.get("Container-Start") or DEFAULT_CONTAINER_START)
     Log.Debug("Container size is set to %s, start to %s" % (container_size, container_start))
     entitlements = get_entitlements()
     conn = fetch_cursor()
@@ -544,14 +575,6 @@ def query_tag_stats(selection, headers):
         4: "director",
         5: "writer",
         6: "actor"
-    }
-
-    meta_types = {
-        1: "movie",
-        2: "show",
-        4: "episode",
-        9: "album",
-        10: "track"
     }
 
     if cursor is not None:
@@ -607,8 +630,8 @@ def query_tag_stats(selection, headers):
                     else:
                         tag_title = "unknown"
 
-                    if meta_type in meta_types:
-                        meta_type = meta_types[meta_type]
+                    if meta_type in META_TYPE_IDS:
+                        meta_type = META_TYPE_IDS[meta_type]
 
                     dicts = {
                         "title": title,
@@ -653,18 +676,11 @@ def query_tag_stats(selection, headers):
 
 
 def query_user_stats(headers):
-    meta_types = {
-        "movie": 1,
-        "show": 2,
-        "episode": 4,
-        "album": 9,
-        "track": 10
-    }
     query_types = [1, 4, 10]
     if "Type" in headers:
         meta_type = headers.get("Type")
-        if meta_type in meta_types:
-            meta_type = meta_types[headers['Type']]
+        if meta_type in META_TYPE_NAMES:
+            meta_type = META_TYPE_NAMES[headers['Type']]
         if int(meta_type) == meta_type:
             query_types = [int(meta_type)]
 
@@ -731,7 +747,7 @@ def query_user_stats(headers):
         for user_name, viewed_at, meta_type, user_id, device_name, device_id, data_bytes in cursor.execute(
                 byte_query, query_params):
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
-
+            meta_type = META_TYPE_IDS.get(meta_type) or meta_type
             dicts = {
                 "userId": user_id,
                 "userName": user_name,
@@ -767,7 +783,7 @@ def query_user_stats(headers):
         for user_id, library_section, grandparent_title, parent_title, title,\
                 rating_key, genre, country, year,\
                 viewed_at, meta_type, user_name, foo in cursor.execute(query, query_params):
-
+            meta_type = META_TYPE_IDS.get(meta_type) or meta_type
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
             dicts = {
@@ -841,21 +857,6 @@ def query_user_stats(headers):
 
 
 def query_library_stats(headers):
-
-    meta_types = {
-        1: "movie",
-        2: "show",
-        3: "season",
-        4: "episode",
-        8: "artist",
-        9: "album",
-        10: "track",
-        12: "extra",
-        13: "photo",
-        15: "playlist",
-        18: "collection"
-    }
-
     conn = fetch_cursor()
     cursor = conn[0]
     connection = conn[1]
@@ -924,11 +925,7 @@ def query_library_stats(headers):
             grandparent_title, last_viewed, user_name, user_id, sec_name, sec_type in cursor.execute(
             query):
 
-            if meta_type in meta_types:
-                meta_type = meta_types[meta_type]
-            else:
-                Log.Debug("Unkown meta type for %s of %s" % (title, meta_type))
-                meta_type = "unknown"
+            meta_type = META_TYPE_IDS.get(meta_type) or meta_type
 
             if last_viewed is not None:
                 last_viewed = int(time.mktime(time.strptime(last_viewed, '%Y-%m-%d %H:%M:%S')))
@@ -961,53 +958,47 @@ def query_library_stats(headers):
 
 
 def query_library_growth(headers):
-    container_size = int(headers.get("Container-Size") or 200)
-    container_start = int(headers.get("Container-Start") or 0)
+    container_size = int(headers.get("Container-Size") or DEFAULT_CONTAINER_SIZE)
+    container_start = int(headers.get("Container-Start") or DEFAULT_CONTAINER_START)
     results = []
-    date_format = "%Y-%m-%d %H:%M:%S"
-    meta_types = {
-        1: "movie",
-        4: "episode",
-        10: "track"
-    }
-    start_date = datetime.datetime.strftime(datetime.datetime.now(), date_format)
+    start_date = datetime.datetime.strftime(datetime.datetime.now(), DATE_STRUCTURE)
     end_date = "1900-01-01 00:00:00"
     if "Interval" in headers:
         interval = int(headers["Interval"])
         if "Start" in headers:
             start_check = headers.get("Start")
-            if validate_date(start_check, date_format):
+            if validate_date(start_check, DATE_STRUCTURE):
                 Log.Debug("We have a start date, we'll use that.")
                 start_date = start_check
                 end_date = datetime.datetime.strftime(datetime.datetime.strptime(
-                    start_date, date_format) - datetime.timedelta(days=interval), date_format)
+                    start_date, DATE_STRUCTURE) - datetime.timedelta(days=interval), DATE_STRUCTURE)
 
         elif "End" in headers:
             end_check = headers.get("End")
-            if validate_date(end_check, date_format):
+            if validate_date(end_check, DATE_STRUCTURE):
                 Log.Debug("We have an end date, we'll set interval from there.")
                 end_date = end_check
                 start_date = datetime.datetime.strftime(datetime.datetime.strptime(
-                    end_date, date_format) + datetime.timedelta(days=interval), date_format)
+                    end_date, DATE_STRUCTURE) + datetime.timedelta(days=interval), DATE_STRUCTURE)
 
         else:
             Log.Debug("No start or end params, going %s days from today." % interval)
             start_int = datetime.datetime.now()
-            start_date = datetime.datetime.now().strftime(date_format)
+            start_date = datetime.datetime.now().strftime(DATE_STRUCTURE)
             end_int = start_int - datetime.timedelta(days=interval)
-            end_date = datetime.datetime.strftime(end_int, date_format)
+            end_date = datetime.datetime.strftime(end_int, DATE_STRUCTURE)
             Log.Debug("start date is %s, end is %s" % (start_date, end_date))
 
     else:
         if "Start" in headers:
             start_check = headers.get("Start")
-            if validate_date(start_check, date_format):
+            if validate_date(start_check, DATE_STRUCTURE):
                 Log.Debug("We have a start date, we'll use that.")
                 start_date = start_check
 
         if "End" in headers:
             end_check = headers.get("End")
-            if validate_date(end_check, date_format):
+            if validate_date(end_check, DATE_STRUCTURE):
                 Log.Debug("We have an end date, we'll set interval from there.")
                 end_date = end_check
 
@@ -1042,7 +1033,7 @@ def query_library_growth(headers):
                 break
 
             if i >= container_start:
-                meta_type = meta_types.get(meta_type) or meta_type
+                meta_type = META_TYPE_IDS.get(meta_type) or meta_type
                 dicts = {
                     "ratingKey": rating_key,
                     "title": title,
