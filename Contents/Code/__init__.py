@@ -206,7 +206,9 @@ def Library():
     headers = sort_headers(["Container-Size", "Type"])
     Log.Debug("Here's where we fetch some library stats.")
     sections = {}
-    records = query_library_stats(headers)
+    recs = query_library_stats(headers)
+    records = recs[0]
+    sec_counts = recs[1]
     for record in records:
         section = record["sectionTitle"]
         if section not in sections:
@@ -270,6 +272,10 @@ def Library():
             "playCount": play_count,
             "type": sec_type
         }
+        sec_unique_played = sec_counts.get(str(sec_id)) or None
+        if sec_unique_played is not None:
+            Log.Debug("Hey, we got the unique count")
+            section_data["watchedItems"] = sec_unique_played["viewedItems"]
         ac = AnyContainer(section_data, "Section", "False")
         for child in section_children:
             ac.add(child)
@@ -951,8 +957,32 @@ def query_library_stats(headers):
                 dicts["banner"] = "/library/metadata/" + str(ratingkey) + "/banner/"
 
             results.append(dicts)
+        count_query = """select mi.total_items, miv.viewed_count, mi.metadata_type, mi.library_section_id
+FROM (
+    select count(metadata_type) as total_items, metadata_type, library_section_id
+    FROM metadata_items
+    group by metadata_type, library_section_id
+) as mi
+INNER JOIN (
+    select count(metadata_type) as viewed_count, metadata_type, library_section_id from (
+        select DISTINCT metadata_type, library_section_id, title, thumb_url
+        FROM metadata_item_views
+    ) as umiv
+    group by metadata_type, library_section_id
+) as miv
+ON miv.library_section_id = mi.library_section_id and miv.metadata_type = mi.metadata_type"""
+        sec_counts = {}
+        for total_items, viewed_count, meta_type, section_id in cursor.execute(count_query):
+            meta_type = META_TYPE_IDS.get(meta_type) or meta_type
+            dicts = {
+                "sectionId": section_id,
+                "type": meta_type,
+                "totalItems": total_items,
+                "viewedItems": viewed_count
+            }
+            sec_counts[str(section_id)] = dicts
         close_connection(connection)
-        return results
+        return [results, sec_counts]
     else:
         Log.Error("Error connecting to DB!")
 
