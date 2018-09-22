@@ -261,39 +261,55 @@ def Growth():
     total_array = {}
     for record in records:
         dates = str(record["addedAt"])[:-9].split("-")
+
         year = str(dates[0])
         month = str(dates[1])
         day = str(dates[2])
+
         year_array = total_array.get(year) or {}
         month_array = year_array.get(month) or {}
         day_array = month_array.get(day) or []
         day_array.append(record)
+
         month_array[day] = day_array
         year_array[month] = month_array
         total_array[year] = year_array
-        Log.Debug("THis one was released in the year %s, month %s, day %s" % (year, month, day))
 
     mc = MediaContainer()
-    for year, months in total_array.items():
-        Log.Debug("Looping for year %s" % year)
-        year_container = FlexContainer("Year", {"value": year})
+    grand_total = 0
+    for y in range(0000, 3000):
+        y = str(y)
         year_total = 0
-        for month, days in months.items():
-            month_container = FlexContainer("Month", {"value": month})
+        if y in total_array:
+            Log.Debug("Found a year %s" % y)
+            year_container = FlexContainer("Year", {"value": y}, False)
+            year_array = total_array[y]
+            Log.Debug("Year Array: %s" % JSON.StringFromObject(year_array))
             month_total = 0
-            for day, records in days.items():
-                day_container = FlexContainer("Day", {"value": day}, False)
-                for record in records:
-                    added_container = FlexContainer("Added", record, False)
-                    day_container.add(added_container)
-                month_total += day_container.size()
-                day_container.set("totalItems", day_container.size())
-                month_container.add(day_container)
-            month_container.set("totalItems", month_total)
-            year_total += month_total
-            year_container.add(month_container)
-        year_container.set("totalItems", year_total)
-        mc.add(year_container)
+            for m in range(1, 12):
+                m = str(m).zfill(2)
+                if m in year_array:
+                    Log.Debug("Found a month %s" % m)
+                    month_container = FlexContainer("Month", {"value": m}, False)
+                    month_array = year_array[m]
+                    for d in range(1, 32):
+                        d = str(d).zfill(2)
+                        if d in month_array:
+                            Log.Debug("Found a day %s" % d)
+                            day_container = FlexContainer("Day", {"value": d}, False)
+                            records = month_array[d]
+                            for record in records:
+                                ac = FlexContainer("Added", record, False)
+                                day_container.add(ac)
+                            month_total += day_container.size()
+                            day_container.set("totalAdded", day_container.size())
+                            month_container.add(day_container)
+                    year_total += month_total
+                    month_container.set("totalAdded", month_total)
+                    year_container.add(month_container)
+            year_container.set("totalAdded", year_total)
+            grand_total += year_total
+            mc.add(year_container)
     return mc
 
 
@@ -302,8 +318,9 @@ def Growth():
 def User():
     mc = MediaContainer()
     headers = sort_headers(["Type", "Userid", "Username", "Container-start", "Container-Size", "Device", "Title"])
-    container_size = headers.get("Container-Size") or 20
-    container_start = headers.get("Container-Start") or 0
+    container_start = int(headers.get("Container-Start") or 0)
+    container_size = int(headers.get("Container-Size") or 20)
+    container_max = container_start + container_size
     users_data = query_user_stats(headers)
 
     if users_data is not None:
@@ -313,17 +330,20 @@ def User():
         for user, records in users.items():
             uc = FlexContainer("User", {"userName": user})
             sc = FlexContainer("Views")
+            i = 0
             for record in records:
-                vc = FlexContainer("View", record, False)
-                if "deviceName" in record:
-                    if record["deviceName"] not in device_names:
-                        device_names.append(record["deviceName"])
-                sc.add(vc)
+                if i >= container_max:
+                    break
+                if i >= container_start:
+                    vc = FlexContainer("View", record, False)
+                    if "deviceName" in record:
+                        if record["deviceName"] not in device_names:
+                            device_names.append(record["deviceName"])
+                    sc.add(vc)
             uc.add(sc)
             dp = FlexContainer("Devices", None, False)
             chrome_data = None
             for device in devices:
-                Log.Debug("Comparing %s to %s" % (user, device["userName"]))
                 if device["userName"] == user:
                     if device["deviceName"] in device_names:
                         if device["deviceName"] != "Chrome":
@@ -440,7 +460,27 @@ def sort_headers(header_list, strict=False):
         for item in header_list:
             if key in ("X-Plex-" + item, item):
                 Log.Debug("We have a " + item)
-                returns[item] = unicode(value)
+                value = unicode(value)
+                is_int = False
+                try:
+                    test = int(value)
+                    is_int = True
+                except ValueError:
+                    Log.Debug("Value is not a string")
+                    pass
+                else:
+                    value = test
+
+                if not is_int:
+                    try:
+                        value = value.split(",")
+                    except ValueError:
+                        Log.Debug("Value is not a csv")
+                        pass
+                    else:
+                        Log.Debug("Value is a csv!")
+
+                returns[item] = value
                 header_list.remove(item)
 
     if strict:
@@ -594,9 +634,6 @@ def query_tag_stats(selection, headers):
 
 
 def query_user_stats(headers):
-    container_start = int(headers.get("Container-Start") or 0)
-    container_size = int(headers.get("Container-Size") or 20)
-    container_max = container_start + container_size
     meta_types = {
         "movie": 1,
         "show": 2,
@@ -604,17 +641,13 @@ def query_user_stats(headers):
         "album": 9,
         "track": 10
     }
+    query_types = [1, 4, 10]
     if "Type" in headers:
         meta_type = headers.get("Type")
         if meta_type in meta_types:
             meta_type = meta_types[headers['Type']]
         if int(meta_type) == meta_type:
             query_types = [int(meta_type)]
-        else:
-            Log.Error("Specified meta type %s is not an integer!" % meta_type)
-            query_types = [1, 4, 6]
-    else:
-        query_types = [1, 4, 6]
 
     conn = fetch_cursor()
     cursor = conn[0]
@@ -624,27 +657,28 @@ def query_user_stats(headers):
         selectors = {}
         entitlements = get_entitlements()
         selectors["sm.metadata_type"] = ["IN", query_types]
+        selectors["count"] = ["""!=""", 0]
         results2 = []
 
         if len(headers.keys()) != 0:
             Log.Debug("We have headers...")
-            selectors = {
-                "Userid": "qs.account_id",
-                "Username": "qs.account_name",
-                "Type": "qs.metadata_type"
+            selector_values = {
+                "Userid": "sm.account_id",
+                "Username": "accounts.name"
             }
 
             for header_key, value in headers.items():
-                if header_key in selectors:
+                if header_key in selector_values:
                     Log.Debug("Valid selector %s found" % header_key)
-                    selector = selectors[header_key]
-                    selectors[selector] = ["=", value]
+                    selector = selector_values[header_key]
+                    selectors[selector] = ["""=""", value]
 
         query_selectors = []
         query_params = []
         for key, data in selectors.items():
             select_action = data[0]
             select_value = data[1]
+            Log.Debug("Select Value is %s, action is %s" % (select_value, select_action))
             if isinstance(select_value, list):
                 query_selector = "%s %s (%s)" % (key, select_action, ",".join('?'*len(select_value)))
                 for sv in select_value:
@@ -655,12 +689,12 @@ def query_user_stats(headers):
 
             query_selectors.append(query_selector)
 
-        query_string = "WHERE " + "AND".join(query_selectors)
+        query_string = "WHERE " + " AND ".join(query_selectors)
         Log.Debug("Query string is '%s'" % query_string)
 
         # TODO: Add another method here to get the user's ID by Plex Token and only return their info?
 
-        query2 = """select accounts.name, sm.at, sm.metadata_type, sm.account_id,
+        byte_query = """select accounts.name, sm.at, sm.metadata_type, sm.account_id,
                     devices.name AS device_name, devices.identifier AS device_id,
                     sb.bytes from statistics_media AS sm
                     INNER JOIN statistics_bandwidth as sb
@@ -669,13 +703,14 @@ def query_user_stats(headers):
                      ON accounts.id = sm.account_id
                     INNER JOIN devices
                      ON devices.id = sm.device_id
-                    where count != 0 AND sm.metadata_type in (1,4,10)
-                    ORDER BY sm.at DESC;"""
+                    %s
+                    ORDER BY sm.at DESC;""" % query_string
 
-        Log.Debug("Query1) is '%s'" % query2)
+        Log.Debug("Query1) is '%s'" % byte_query)
+        Log.Debug("Query selectors: %s" % JSON.StringFromObject(query_params))
 
         for user_name, viewed_at, meta_type, user_id, device_name, device_id, data_bytes in cursor.execute(
-                query2):
+                byte_query, query_params):
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
             dicts = {
@@ -691,26 +726,28 @@ def query_user_stats(headers):
         Log.Debug("Query1 completed.")
 
         query = """SELECT 
-                        miv.account_id, miv.library_section_id, miv.grandparent_title, miv.parent_title, miv.title,
+                        sm.account_id, sm.library_section_id, sm.grandparent_title, sm.parent_title, sm.title,
                         mi.id as rating_key, mi.tags_genre as genre, mi.tags_country as country, mi.year,
-                        miv.viewed_at, miv.metadata_type, accounts.name
-                    FROM metadata_item_views as miv
+                        sm.viewed_at, sm.metadata_type, accounts.name, accounts.id as count
+                    FROM metadata_item_views as sm
                     JOIN accounts
                     ON 
-                    miv.account_id = accounts.id
+                    sm.account_id = accounts.id
                     LEFT JOIN metadata_items as mi
                     ON 
-                        miv.title = mi.title 
-                        AND miv.thumb_url = mi.user_thumb_url 
-                        AND mi.originally_available_at = miv.originally_available_at
-                    WHERE miv.metadata_type in (1,4,10)                        
-                    ORDER BY miv.viewed_at desc;"""
+                        sm.title = mi.title 
+                        AND sm.thumb_url = mi.user_thumb_url 
+                        AND mi.originally_available_at = sm.originally_available_at
+                    %s                        
+                    ORDER BY sm.viewed_at desc;""" % query_string
 
         Log.Debug("Query2 is '%s'" % query)
+        Log.Debug("Query selectors: %s" % JSON.StringFromObject(query_params))
+
         results = []
         for user_id, library_section, grandparent_title, parent_title, title,\
                 rating_key, genre, country, year,\
-                viewed_at, meta_type, user_name in cursor.execute(query):
+                viewed_at, meta_type, user_name, foo in cursor.execute(query, query_params):
 
             last_viewed = int(time.mktime(datetime.datetime.strptime(viewed_at, "%Y-%m-%d %H:%M:%S").timetuple()))
 
@@ -905,7 +942,7 @@ def query_library_stats(headers):
 
 
 def query_library_growth(headers):
-    container_size = int(headers.get("Container-Size") or 20)
+    container_size = int(headers.get("Container-Size") or 200)
     container_start = int(headers.get("Container-Start") or 0)
     results = []
     date_format = "%Y-%m-%d %H:%M:%S"
@@ -1010,7 +1047,6 @@ def query_library_growth(headers):
             i += 1
         close_connection(connection)
     return results
-
 
 
 def validate_date(date_text, date_format):
