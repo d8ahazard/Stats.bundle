@@ -277,37 +277,56 @@ def Growth():
 
     mc = MediaContainer()
     grand_total = 0
+    types_all = {}
     for y in range(0000, 3000):
         y = str(y)
         year_total = 0
         if y in total_array:
+            types_year = {}
             Log.Debug("Found a year %s" % y)
-            year_container = FlexContainer("Year", {"value": y}, False)
+            year_container = FlexContainer("Year", {"value": y})
             year_array = total_array[y]
             Log.Debug("Year Array: %s" % JSON.StringFromObject(year_array))
             month_total = 0
             for m in range(1, 12):
                 m = str(m).zfill(2)
                 if m in year_array:
+                    types_month = {}
                     Log.Debug("Found a month %s" % m)
-                    month_container = FlexContainer("Month", {"value": m}, False)
+                    month_container = FlexContainer("Month", {"value": m})
                     month_array = year_array[m]
                     for d in range(1, 32):
                         d = str(d).zfill(2)
                         if d in month_array:
+                            types_day = {}
                             Log.Debug("Found a day %s" % d)
                             day_container = FlexContainer("Day", {"value": d}, False)
                             records = month_array[d]
                             for record in records:
                                 ac = FlexContainer("Added", record, False)
+                                record_type = record["type"]
+                                temp_day_count = types_day.get(record_type) or 0
+                                temp_month_count = types_month.get(record_type) or 0
+                                temp_year_count = types_year.get(record_type) or 0
+                                temp_all_count = types_all.get(record_type) or 0
+                                types_day[record_type] = temp_day_count + 1
+                                types_month[record_type] = temp_month_count + 1
+                                types_year[record_type] = temp_year_count + 1
+                                types_all[record_type] = temp_all_count + 1
                                 day_container.add(ac)
                             month_total += day_container.size()
                             day_container.set("totalAdded", day_container.size())
+                            for rec_type in types_day:
+                                day_container.set("%sCount" % rec_type, types_day.get(rec_type))
                             month_container.add(day_container)
                     year_total += month_total
                     month_container.set("totalAdded", month_total)
+                    for rec_type in types_month:
+                        month_container.set("%sCount" % rec_type, types_month.get(rec_type))
                     year_container.add(month_container)
             year_container.set("totalAdded", year_total)
+            for rec_type in types_year:
+                year_container.set("%sCount" % rec_type, types_year.get(rec_type))
             grand_total += year_total
             mc.add(year_container)
     return mc
@@ -999,7 +1018,7 @@ def query_library_growth(headers):
     connection = conn[1]
     if cursor is not None:
         Log.Debug("Ready to query!")
-        query = """SELECT mi1.id, mi1.title, mi1.year, mi1.metadata_type, mi1.added_at, mi1.tags_genre as genre, mi1.tags_country as country, mi1.parent_id,
+        query = """SELECT mi1.id, mi1.title, mi1.year, mi1.metadata_type, mi1.created_at, mi1.tags_genre as genre, mi1.tags_country as country, mi1.parent_id,
                     mi2.title as parent_title, mi2.parent_id as grandparent_id, mi2.tags_genre as parent_genre, mi2.tags_country as parent_country,
                     mi3.title as grandparent_title, mi3.tags_genre as grandparent_genre, mi3.tags_country as grandparent_country
                     FROM metadata_items as mi1
@@ -1007,16 +1026,16 @@ def query_library_growth(headers):
                     ON mi1.parent_id = mi2.id
                     LEFT JOIN metadata_items as mi3
                     ON mi2.parent_id = mi3.id
-                    WHERE mi1.added_at BETWEEN ? AND ?
+                    WHERE mi1.created_at BETWEEN ? AND ?
                     AND mi1.metadata_type IN (1, 4, 10)
                     AND mi1.title not in ("", "com.plexapp.agents")
-                    ORDER BY mi1.added_at desc;
+                    ORDER BY mi1.created_at desc;
         """
         params = (end_date, start_date)
         Log.Debug("Query is '%s'" % query)
         i = 0
         container_max = container_start + container_size
-        for rating_key, title, year, meta_type, added_at, genres, country, \
+        for rating_key, title, year, meta_type, created_at, genres, country, \
                 parent_id, parent_title, parent_genre, parent_country,\
                 grandparent_id, grandparent_title, grandparent_genre, grandparent_country in cursor.execute(query, params):
             if i >= container_max:
@@ -1041,7 +1060,7 @@ def query_library_growth(headers):
                     "type": meta_type,
                     "genres": genres,
                     "country": country,
-                    "addedAt": added_at
+                    "addedAt": created_at
                 }
                 results.append(dicts)
             i += 1
